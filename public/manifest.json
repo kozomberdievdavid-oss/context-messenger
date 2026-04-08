@@ -1,0 +1,8 @@
+{
+  "name": "Context Messenger",
+  "short_name": "context",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0f0f",
+  "theme_color": "#0f0f0f"
+}

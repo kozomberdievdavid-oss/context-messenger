@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0f0f0f">
+    <title>context</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+</head>
+<body>
+
+    <div id="login-screen" class="screen">
+        <div class="login-box">
+            <h1>context</h1>
+            <input type="text" id="username-input" placeholder="Имя пользователя">
+            <input type="password" id="password-input" placeholder="Пароль">
+            <button onclick="login()">Войти</button>
+            <p id="login-error"></p>
+        </div>
+    </div>
+
+    <div id="chat-screen" class="screen" style="display: none;">
+        
+        <div class="sidebar">
+            <div class="search-tabs">
+                <button onclick="setMode('users')">Контакты</button>
+                <button onclick="setMode('files')">Файлы</button>
+                <button onclick="setMode('web')">Web</button>
+            </div>
+            
+            <input type="text" id="search-input" placeholder="Поиск..." onkeyup="handleSearch()">
+            
+            <ul id="sidebar-list">
+                </ul>
+        </div>
+
+        <div class="chat-area">
+            <div class="chat-header">
+                <span id="current-chat-user">Выберите контакт для общения</span>
+                <span id="my-name" style="float: right; color: var(--accent-silver);"></span>
+            </div>
+            
+            <div id="messages-container">
+                </div>
+            
+            <div class="chat-input-area" id="input-area" style="display: none;">
+                <input type="file" id="file-input" style="display: none;" onchange="uploadFile()">
+                <button class="icon-btn" onclick="document.getElementById('file-input').click()">📁</button>
+                <input type="text" id="message-input" placeholder="Написать сообщение...">
+                <button onclick="sendMessage()">Отправить</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

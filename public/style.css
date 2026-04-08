@@ -1,0 +1,94 @@
+:root {
+    --bg-deep: #0a0a0a;
+    --bg-panel: #171717;
+    --bg-hover: #262626;
+    --text-main: #f4f4f5;
+    --text-muted: #a1a1aa;
+    --accent: #3b82f6; /* Мягкий синий цвет для твоих сообщений */
+    --border: #27272a;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+
+body { background-color: var(--bg-deep); color: var(--text-main); height: 100vh; display: flex; overflow: hidden; }
+
+/* Скроллбары */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 10px; }
+
+.screen { width: 100%; height: 100%; display: flex; }
+
+/* Красивая форма входа */
+#login-screen { justify-content: center; align-items: center; background: radial-gradient(circle at center, #171717 0%, #0a0a0a 100%); }
+.login-box {
+    background: var(--bg-panel); padding: 40px; border: 1px solid var(--border);
+    border-radius: 16px; text-align: center; width: 90%; max-width: 320px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+}
+.login-box h1 { margin-bottom: 30px; font-weight: 600; font-size: 24px; color: var(--text-main); }
+input {
+    width: 100%; padding: 14px; margin-bottom: 15px; background: var(--bg-deep);
+    border: 1px solid var(--border); color: var(--text-main); border-radius: 8px;
+    transition: 0.3s;
+}
+input:focus { border-color: var(--accent); outline: none; }
+button {
+    width: 100%; padding: 14px; background: var(--text-main); color: var(--bg-deep);
+    border: none; border-radius: 8px; cursor: pointer; font-weight: 600; transition: 0.2s;
+}
+button:active { transform: scale(0.98); }
+
+/* Боковая панель */
+.sidebar {
+    width: 300px; border-right: 1px solid var(--border); background: var(--bg-deep);
+    display: flex; flex-direction: column;
+}
+.search-tabs { display: flex; padding: 10px 10px 0 10px; gap: 5px; }
+.search-tabs button { 
+    flex: 1; background: transparent; color: var(--text-muted); border-bottom: 2px solid transparent; 
+    border-radius: 0; padding: 10px 0;
+}
+.search-tabs button:hover { color: var(--text-main); }
+.search-tabs button:focus { border-bottom: 2px solid var(--accent); color: var(--text-main); }
+
+#search-input { margin: 10px; width: calc(100% - 20px); border-radius: 20px; padding: 10px 15px; }
+
+#sidebar-list { list-style: none; overflow-y: auto; flex: 1; padding: 10px; }
+#sidebar-list li {
+    padding: 12px 15px; border-radius: 10px; cursor: pointer; margin-bottom: 5px;
+    transition: background 0.2s; display: flex; flex-direction: column;
+}
+#sidebar-list li:hover { background: var(--bg-hover); }
+
+/* Чат */
+.chat-area { flex: 1; display: flex; flex-direction: column; background: var(--bg-deep); }
+.chat-header { padding: 20px; background: var(--bg-panel); border-bottom: 1px solid var(--border); font-weight: 500; display: flex; justify-content: space-between; }
+#messages-container { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
+
+/* Пузыри сообщений */
+.message {
+    max-width: 75%; padding: 12px 16px; border-radius: 18px 18px 18px 4px;
+    background: var(--bg-panel); border: 1px solid var(--border);
+    align-self: flex-start; line-height: 1.5; font-size: 15px;
+}
+.message.mine {
+    align-self: flex-end; background: var(--accent); color: white; border: none;
+    border-radius: 18px 18px 4px 18px;
+}
+.message.mine b { display: none; /* Прячем свое имя, как в телеграме */ }
+.time { font-size: 11px; margin-left: 8px; opacity: 0.6; float: right; margin-top: 5px;}
+
+/* Поле ввода */
+.chat-input-area { padding: 15px 20px; background: var(--bg-panel); border-top: 1px solid var(--border); display: flex; gap: 10px; align-items: center; }
+.chat-input-area input[type="text"] { margin-bottom: 0; border-radius: 20px; padding: 12px 20px; flex: 1; }
+.icon-btn { width: 45px; height: 45px; border-radius: 50%; background: transparent; color: var(--text-muted); font-size: 20px; padding: 0;}
+.icon-btn:hover { background: var(--bg-hover); color: var(--text-main); }
+.chat-input-area button:last-child { width: auto; padding: 12px 24px; border-radius: 20px; }
+
+/* Адаптивность для телефона */
+@media (max-width: 768px) {
+    .sidebar { width: 80px; } /* Прячем имена на телефоне в боковом меню */
+    #sidebar-list li { align-items: center; font-size: 12px; text-align: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 12px 5px;}
+    .search-tabs, #search-input { display: none; } /* Упрощаем левую панель на мобилке */
+}
