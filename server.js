@@ -1,4 +1,4 @@
-require('dotenv').config(); // Загружаем секретные ключи
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -6,42 +6,21 @@ const mongoose = require('mongoose');
 const multer = require('multer');
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
-const axios = require('axios');
-const path = require('path');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcryptjs'); // Подключили шифрование
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.static('public'));
-app.use(express.json());
+app.use(express.json()); // ВАЖНО: чтобы сервер понимал JSON
 
-// --- НАСТРОЙКА MONGODB ---
+// Подключение к базе
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('✅ База данных MongoDB подключена!'))
     .catch(err => console.error('❌ Ошибка MongoDB:', err));
 
-// Создаем схемы (как будут выглядеть данные в базе)
-const UserSchema = new mongoose.Schema({ 
-    username: { type: String, unique: true }, 
-    email: { type: String, unique: true },
-    password: String 
-});
-const User = mongoose.model('User', UserSchema);
-
-const MessageSchema = new mongoose.Schema({
-    sender: String,
-    receiver: String,
-    text: String,
-    fileUrl: String, // Теперь здесь полная ссылка на Cloudinary
-    fileName: String,
-    time: String,
-    createdAt: { type: Date, default: Date.now }
-});
-const Message = mongoose.model('Message', MessageSchema);
-
-// --- НАСТРОЙКА CLOUDINARY ---
+// Настройка облака для файлов
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
@@ -50,66 +29,82 @@ cloudinary.config({
 
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
-    params: {
-        folder: 'context_messenger', // Папка внутри твоего Cloudinary
-        resource_type: 'auto' // Принимать и картинки, и другие файлы
-    }
+    params: { folder: 'context_uploads' },
 });
 const upload = multer({ storage: storage });
 
-// --- API ПРОЕКТА ---
+// База пользователей (теперь с почтой)
+const UserSchema = new mongoose.Schema({
+    username: { type: String, unique: true },
+    email: { type: String, unique: true },
+    password: String
+});
+const User = mongoose.model('User', UserSchema);
 
-app.post('/login', async (req, res) => {
-    const { email, password } = req.body; // Вход теперь по Email
-    const user = await User.findOne({ email });
-    if (user && await bcrypt.compare(password, user.password)) {
-        res.json({ success: true, username: user.username, email: user.email });
-    } else {
-        res.json({ success: false, message: 'Неверные данные' });
+// База сообщений
+const MessageSchema = new mongoose.Schema({
+    sender: String,
+    receiver: String,
+    text: String,
+    fileUrl: String,
+    fileName: String,
+    time: String
+}, { timestamps: true });
+const Message = mongoose.model('Message', MessageSchema);
+
+// ==========================================
+// МАРШРУТЫ (ROUTES)
+// ==========================================
+
+// РЕГИСТРАЦИЯ
+app.post('/register', async (req, res) => {
+    const { username, email, password } = req.body;
+    try {
+        const existingUser = await User.findOne({ $or: [{ username }, { email }] });
+        if (existingUser) return res.json({ success: false, message: 'Имя или Email уже заняты' });
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+        await User.create({ username, email, password: hashedPassword });
+        res.json({ success: true });
+    } catch (e) { 
+        res.json({ success: false, message: 'Ошибка сервера' }); 
     }
 });
 
+// ВХОД
+app.post('/login', async (req, res) => {
+    const { email, password } = req.body;
+    try {
+        const user = await User.findOne({ email });
+        if (user && await bcrypt.compare(password, user.password)) {
+            res.json({ success: true, username: user.username, email: user.email });
+        } else {
+            res.json({ success: false, message: 'Неверные данные' });
+        }
+    } catch (e) {
+        res.json({ success: false, message: 'Ошибка сервера' });
+    }
+});
+
+// Загрузка контактов
 app.get('/users', async (req, res) => {
     const users = await User.find({}, 'username');
     res.json(users);
 });
 
-// Загрузка файла летит напрямую в Cloudinary!
+// Загрузка файла
 app.post('/upload', upload.single('file'), (req, res) => {
     if (!req.file) return res.status(400).send('Нет файла');
-    // req.file.path - это готовая ссылка на файл в интернете от Cloudinary
-    res.json({ fileUrl: req.file.path, originalName: req.file.originalname });
+    const originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+    res.json({ fileUrl: req.file.path, originalName: originalName });
 });
 
-app.get('/search/files', async (req, res) => {
-    const query = req.query.q;
-    // Ищем файлы по оригинальному имени (без учета регистра)
-    const messages = await Message.find({ fileName: { $regex: query, $options: 'i' } });
-    
-    // Форматируем для фронтенда
-    const formatted = messages.map(m => ({ file: m.fileName, sender: m.sender, url: m.fileUrl }));
-    res.json(formatted);
-});
-
-app.get('/search/web', async (req, res) => {
-    try {
-        const query = req.query.q;
-        const url = `https://ru.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&utf8=&format=json`;
-        const response = await axios.get(url, { headers: { 'User-Agent': 'ContextMessenger/1.0 (test)' } });
-        const results = response.data.query.search.map(item => ({
-            title: item.title,
-            snippet: item.snippet.replace(/<\/?[^>]+(>|$)/g, ""),
-            link: `https://ru.wikipedia.org/wiki/${encodeURIComponent(item.title)}`
-        }));
-        res.json(results);
-    } catch (error) {
-        res.status(500).json({ error: 'Ошибка поиска' });
-    }
-});
-
-// --- СИСТЕМА ЧАТА (Socket.io) ---
+// ==========================================
+// СОКЕТЫ (РЕАЛТАЙМ)
+// ==========================================
 io.on('connection', (socket) => {
     
+    // Загрузка истории переписки
     socket.on('load_messages', async ({ me, them }) => {
         const messages = await Message.find({
             $or: [
@@ -118,36 +113,41 @@ io.on('connection', (socket) => {
             ]
         }).sort({ createdAt: 1 });
         
-        // Преобразуем для старого фронтенда
         const formatted = messages.map(m => ({
             sender: m.sender, receiver: m.receiver, text: m.text, 
             file: m.fileUrl, originalName: m.fileName, time: m.time
         }));
         socket.emit('message_history', formatted);
     });
+
+    // Кто-то печатает...
     socket.on('typing', ({ from, to }) => {
-    socket.broadcast.emit('user_typing', { from, to });
+        socket.broadcast.emit('user_typing', { from, to });
     });
 
+    // Отправка нового сообщения
     socket.on('send_message', async (data) => {
-        const time = new Date().toLocaleTimeString().slice(0, 5);
-        const msgData = { ...data, time };
-        
-        // Сохраняем в MongoDB
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        const msg = { ...data, time: timeString };
+
+        // Сохраняем в базу
         await Message.create({
-            sender: msgData.sender,
-            receiver: msgData.receiver,
-            text: msgData.text,
-            fileUrl: msgData.file || '',
-            fileName: msgData.originalName || '',
-            time: msgData.time
+            sender: msg.sender,
+            receiver: msg.receiver,
+            text: msg.text,
+            fileUrl: msg.file,
+            fileName: msg.originalName,
+            time: msg.time
         });
-        
-        io.emit('receive_message', msgData);
+
+        // Рассылаем всем
+        io.emit('receive_message', msg);
     });
 });
 
-const PORT = process.env.PORT || 3000;
+// Запуск сервера
+const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
     console.log(`🚀 Сервер запущен на порту ${PORT}!`);
 });
