@@ -1,40 +1,59 @@
+const typingIndicator = document.getElementById('typing-indicator');
+const messageSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3');
 const socket = io();
 let myUsername = '';
 let currentChatUser = '';
-let currentMode = 'users'; // 'users', 'files', 'web'
+let currentMode = 'users';
 
 // 1. Авторизация
-async function login() {
+window.onload = () => {
+    const savedUser = localStorage.getItem('context_user');
+    if (savedUser) {
+        myUsername = savedUser;
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('chat-screen').style.display = 'flex';
+        loadUsers();
+    }
+};
+
+async function auth(type) {
     const user = document.getElementById('username-input').value;
+    const email = document.getElementById('email-input').value;
     const pass = document.getElementById('password-input').value;
+
+    const payload = type === 'login' ? { email, password: pass } : { username: user, email, password: pass };
     
     try {
-        const res = await fetch('/login', {
+        const res = await fetch(type === 'login' ? '/login' : '/register', {
             method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Bypass-Tunnel-Reminder': 'true' // <-- Вот эта магия спасет мобильный вход!
-            },
-            body: JSON.stringify({ username: user, password: pass })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
         });
         const data = await res.json();
         
         if (data.success) {
-            myUsername = data.username;
-            document.getElementById('login-screen').style.display = 'none';
-            document.getElementById('chat-screen').style.display = 'flex';
-            document.getElementById('my-name').innerText = `Я: ${myUsername}`;
-            loadUsers();
-        } else {
-            document.getElementById('login-error').innerText = data.message;
+            if (type === 'login') {
+                myUsername = data.username;
+                localStorage.setItem('context_user', data.username);
+                location.reload();
+            } else { 
+                alert("Успешная регистрация! Теперь нажмите 'Войти'."); 
+            }
+        } else { 
+            document.getElementById('login-error').innerText = data.message; 
         }
     } catch (err) {
-        console.error('Login error:', err);
+        console.error('Ошибка:', err);
         document.getElementById('login-error').innerText = 'Ошибка соединения';
     }
 }
 
-// 2. Переключение вкладок левой панели
+function logout() {
+    localStorage.removeItem('context_user');
+    location.reload();
+}
+
+// 2. Переключение вкладок
 function setMode(mode) {
     currentMode = mode;
     document.getElementById('search-input').value = '';
@@ -42,7 +61,6 @@ function setMode(mode) {
     else document.getElementById('sidebar-list').innerHTML = '<li style="text-align:center;">Введите запрос...</li>';
 }
 
-// Загрузка контактов
 async function loadUsers() {
     const res = await fetch('/users');
     const users = await res.json();
@@ -58,16 +76,14 @@ async function loadUsers() {
     });
 }
 
-// 3. Открытие чата с пользователем
+// 3. Чат
 function openChat(username) {
     currentChatUser = username;
     document.getElementById('current-chat-user').innerText = `Диалог с: ${username}`;
     document.getElementById('input-area').style.display = 'flex';
-    // Запрашиваем историю
     socket.emit('load_messages', { me: myUsername, them: username });
 }
 
-// 4. Отправка сообщений
 function sendMessage() {
     const input = document.getElementById('message-input');
     if (!input.value.trim() || !currentChatUser) return;
@@ -80,7 +96,6 @@ function sendMessage() {
     input.value = '';
 }
 
-// 5. Загрузка файла в чат
 async function uploadFile() {
     const file = document.getElementById('file-input').files[0];
     if (!file) return;
@@ -91,31 +106,16 @@ async function uploadFile() {
     const res = await fetch('/upload', { method: 'POST', body: formData });
     const data = await res.json();
 
-    // Отправляем сообщение со ссылкой на файл
     socket.emit('send_message', {
         sender: myUsername,
         receiver: currentChatUser,
         text: `📎 Отправлен файл: ${data.originalName}`,
-        file: data.fileName
+        file: data.fileUrl,
+        originalName: data.originalName
     });
 }
 
-// 6. Получение сообщений (Реалтайм и История)
-socket.on('message_history', (messages) => {
-    document.getElementById('messages-container').innerHTML = '';
-    messages.forEach(displayMessage);
-});
-
-socket.on('receive_message', (msg) => {
-    // Показываем, только если это сообщение из текущего диалога
-    if (
-        (msg.sender === myUsername && msg.receiver === currentChatUser) ||
-        (msg.sender === currentChatUser && msg.receiver === myUsername)
-    ) {
-        displayMessage(msg);
-    }
-});
-
+// 4. Отображение и получение сообщений
 function displayMessage(msg) {
     const container = document.getElementById('messages-container');
     const div = document.createElement('div');
@@ -123,20 +123,50 @@ function displayMessage(msg) {
     
     let content = `<b>${msg.sender}</b>: ${msg.text}`;
     if (msg.file) {
-        // Если это картинка, показываем её, иначе даем ссылку
-        if(msg.file.match(/\.(jpg|jpeg|png|gif)$/i)) {
-            content += `<br><img src="/uploads/${msg.file}" style="max-width: 200px; margin-top:10px; border-radius:4px;">`;
+        if(msg.file.match(/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i) || msg.file.includes('image')) {
+            content += `<br><img src="${msg.file}" style="max-width: 200px; margin-top:10px; border-radius:4px;">`;
         } else {
-            content += `<br><a href="/uploads/${msg.file}" target="_blank" style="color:inherit;">Скачать файл</a>`;
+            content += `<br><a href="${msg.file}" target="_blank" style="color:inherit; text-decoration:underline;">Скачать файл</a>`;
         }
     }
     
     div.innerHTML = `${content} <span class="time">${msg.time}</span>`;
     container.appendChild(div);
-    container.scrollTop = container.scrollHeight; // Скролл вниз
+    container.scrollTop = container.scrollHeight;
 }
 
-// 7. Поиск (Файлы и Веб)
+socket.on('message_history', (messages) => {
+    document.getElementById('messages-container').innerHTML = '';
+    messages.forEach(displayMessage);
+});
+
+socket.on('receive_message', (msg) => {
+    if (
+        (msg.sender === myUsername && msg.receiver === currentChatUser) ||
+        (msg.sender === currentChatUser && msg.receiver === myUsername)
+    ) {
+        displayMessage(msg);
+        if (msg.sender !== myUsername) messageSound.play(); // Воспроизводим звук
+    }
+});
+
+// 5. Логика "Кто-то печатает..."
+let typingTimeout;
+document.getElementById('message-input').addEventListener('input', () => {
+    if (currentChatUser) {
+        socket.emit('typing', { from: myUsername, to: currentChatUser });
+    }
+});
+
+socket.on('user_typing', ({ from, to }) => {
+    if (to === myUsername && from === currentChatUser) {
+        typingIndicator.innerText = `${from} печатает...`;
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => { typingIndicator.innerText = ''; }, 2000);
+    }
+});
+
+// 6. Поиск
 async function handleSearch() {
     const query = document.getElementById('search-input').value;
     if (query.length < 2) return;

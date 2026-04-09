@@ -8,6 +8,7 @@ const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const axios = require('axios');
 const path = require('path');
+const bcrypt = require('bcryptjs');
 
 const app = express();
 const server = http.createServer(app);
@@ -22,7 +23,11 @@ mongoose.connect(process.env.MONGO_URI)
     .catch(err => console.error('❌ Ошибка MongoDB:', err));
 
 // Создаем схемы (как будут выглядеть данные в базе)
-const UserSchema = new mongoose.Schema({ username: String, password: String });
+const UserSchema = new mongoose.Schema({ 
+    username: { type: String, unique: true }, 
+    email: { type: String, unique: true },
+    password: String 
+});
 const User = mongoose.model('User', UserSchema);
 
 const MessageSchema = new mongoose.Schema({
@@ -55,16 +60,12 @@ const upload = multer({ storage: storage });
 // --- API ПРОЕКТА ---
 
 app.post('/login', async (req, res) => {
-    const { username, password } = req.body;
-    let user = await User.findOne({ username });
-    
-    if (!user) {
-        user = await User.create({ username, password });
-        res.json({ success: true, username });
-    } else if (user.password === password) {
-        res.json({ success: true, username });
+    const { email, password } = req.body; // Вход теперь по Email
+    const user = await User.findOne({ email });
+    if (user && await bcrypt.compare(password, user.password)) {
+        res.json({ success: true, username: user.username, email: user.email });
     } else {
-        res.json({ success: false, message: 'Неверный пароль' });
+        res.json({ success: false, message: 'Неверные данные' });
     }
 });
 
@@ -108,6 +109,7 @@ app.get('/search/web', async (req, res) => {
 
 // --- СИСТЕМА ЧАТА (Socket.io) ---
 io.on('connection', (socket) => {
+    
     socket.on('load_messages', async ({ me, them }) => {
         const messages = await Message.find({
             $or: [
@@ -122,6 +124,9 @@ io.on('connection', (socket) => {
             file: m.fileUrl, originalName: m.fileName, time: m.time
         }));
         socket.emit('message_history', formatted);
+    });
+    socket.on('typing', ({ from, to }) => {
+    socket.broadcast.emit('user_typing', { from, to });
     });
 
     socket.on('send_message', async (data) => {

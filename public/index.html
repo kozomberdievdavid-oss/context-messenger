@@ -7,15 +7,29 @@
     <title>context</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </head>
 <body>
 
     <div id="login-screen" class="screen">
         <div class="login-box">
-            <h1>context</h1>
-            <input type="text" id="username-input" placeholder="Имя пользователя">
-            <input type="password" id="password-input" placeholder="Пароль">
-            <button onclick="login()">Войти</button>
+            <h1 class="logo">context</h1>
+            <div class="input-group">
+                <span class="material-icons">person</span>
+                <input type="text" id="username-input" placeholder="Имя пользователя">
+            </div>
+            <div class="input-group">
+                <span class="material-icons">email</span>
+                <input type="email" id="email-input" placeholder="Ваш Email">
+            </div>
+            <div class="input-group">
+                <span class="material-icons">lock</span>
+                <input type="password" id="password-input" placeholder="Пароль">
+            </div>
+            <div class="auth-buttons">
+                <button class="primary-btn" onclick="auth('login')">Войти</button>
+                <button class="secondary-btn" onclick="auth('register')">Регистрация</button>
+            </div>
             <p id="login-error"></p>
         </div>
     </div>
@@ -23,32 +37,44 @@
     <div id="chat-screen" class="screen" style="display: none;">
         
         <div class="sidebar">
-            <div class="search-tabs">
-                <button onclick="setMode('users')">Контакты</button>
-                <button onclick="setMode('files')">Файлы</button>
-                <button onclick="setMode('web')">Web</button>
+            <div class="sidebar-header">
+                <h3>Чаты</h3>
+                <button class="icon-btn" onclick="logout()" title="Выйти">
+                    <span class="material-icons">logout</span>
+                </button>
             </div>
-            
-            <input type="text" id="search-input" placeholder="Поиск..." onkeyup="handleSearch()">
-            
-            <ul id="sidebar-list">
-                </ul>
+            <div class="search-tabs">
+                <button onclick="setMode('users')" id="btn-users" class="active"><span class="material-icons">people</span></button>
+                <button onclick="setMode('files')" id="btn-files"><span class="material-icons">folder</span></button>
+                <button onclick="setMode('web')" id="btn-web"><span class="material-icons">public</span></button>
+            </div>
+            <div class="search-box">
+                <input type="text" id="search-input" placeholder="Поиск..." onkeyup="handleSearch()">
+            </div>
+            <ul id="sidebar-list"></ul>
         </div>
 
         <div class="chat-area">
             <div class="chat-header">
-                <span id="current-chat-user">Выберите контакт для общения</span>
-                <span id="my-name" style="float: right; color: var(--accent-silver);"></span>
+                <div class="user-info">
+                    <span class="material-icons">account_circle</span>
+                    <span id="current-chat-user">Выберите чат</span>
+                </div>
             </div>
             
-            <div id="messages-container">
-                </div>
+            <div id="messages-container"></div>
+            
+            <div id="typing-indicator" style="font-size: 12px; color: var(--accent); height: 15px; padding-left: 20px;"></div>
             
             <div class="chat-input-area" id="input-area" style="display: none;">
                 <input type="file" id="file-input" style="display: none;" onchange="uploadFile()">
-                <button class="icon-btn" onclick="document.getElementById('file-input').click()">📁</button>
-                <input type="text" id="message-input" placeholder="Написать сообщение...">
-                <button onclick="sendMessage()">Отправить</button>
+                <button class="attach-btn" onclick="document.getElementById('file-input').click()">
+                    <span class="material-icons">attach_file</span>
+                </button>
+                <input type="text" id="message-input" placeholder="Введите сообщение..." onkeypress="if(event.key==='Enter') sendMessage()">
+                <button class="send-btn" onclick="sendMessage()">
+                    <span class="material-icons">send</span>
+                </button>
             </div>
         </div>
     </div>
