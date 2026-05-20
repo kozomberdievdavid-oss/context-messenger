@@ -3,12 +3,15 @@ const messageSound = new Audio(
   'https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3'
 );
 
+const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
+
 let socket = null;
 let myUsername = '';
+let myEmail = '';
 let currentChatUser = '';
-let currentMode = 'users';
+let mainTab = 'chats';
+let searchMode = 'users';
 let typingTimeout;
-let allUsersCache = [];
 const onlineUsers = new Set();
 
 function getToken() {
@@ -54,8 +57,7 @@ function connectSocket() {
   socket = io({ auth: { token: getToken() } });
 
   socket.on('connect_error', () => {
-    document.getElementById('login-error').innerText =
-      'Не удалось подключиться. Войдите снова.';
+    document.getElementById('login-error').innerText = 'Connection failed. Sign in again.';
     logout();
   });
 
@@ -92,14 +94,12 @@ function connectSocket() {
       displayMessage(msg);
       if (msg.sender !== myUsername) messageSound.play().catch(() => {});
     }
-    if (currentMode === 'users' && !document.getElementById('search-input').value.trim()) {
-      loadUsers();
-    }
+    loadChats();
   });
 
   socket.on('user_typing', ({ from, to }) => {
     if (to === myUsername && from === currentChatUser) {
-      typingIndicator.textContent = `${from} печатает...`;
+      typingIndicator.textContent = `${from} is typing...`;
       clearTimeout(typingTimeout);
       typingTimeout = setTimeout(() => {
         typingIndicator.textContent = '';
@@ -109,7 +109,7 @@ function connectSocket() {
 }
 
 function refreshOnlineIndicators() {
-  document.querySelectorAll('#sidebar-list .user-item').forEach((li) => {
+  document.querySelectorAll('.user-item').forEach((li) => {
     const u = li.dataset.username;
     const dot = li.querySelector('.online-dot');
     if (dot) dot.classList.toggle('is-online', onlineUsers.has(u));
@@ -119,7 +119,7 @@ function refreshOnlineIndicators() {
     const on = onlineUsers.has(currentChatUser);
     headerDot.classList.toggle('is-online', on);
     const statusEl = document.getElementById('chat-header-status');
-    if (statusEl) statusEl.textContent = on ? 'в сети' : '';
+    if (statusEl) statusEl.textContent = on ? 'online' : '';
   }
 }
 
@@ -130,12 +130,12 @@ function showChatScreen() {
 
 window.onload = () => {
   const savedUser = localStorage.getItem('context_user');
-  const savedToken = getToken();
-  if (savedUser && savedToken) {
+  if (savedUser && getToken()) {
     myUsername = savedUser;
     showChatScreen();
     connectSocket();
-    loadUsers();
+    loadChats();
+    loadProfile();
   }
 };
 
@@ -144,10 +144,14 @@ async function auth(type) {
   const email = document.getElementById('email-input').value.trim();
   const pass = document.getElementById('password-input').value;
 
+  if (type === 'register' && !USERNAME_RE.test(user)) {
+    document.getElementById('login-error').innerText =
+      'Username: only a-z, A-Z, 0-9, _ (3-20 chars)';
+    return;
+  }
+
   const payload =
-    type === 'login'
-      ? { email, password: pass }
-      : { username: user, email, password: pass };
+    type === 'login' ? { email, password: pass } : { username: user, email, password: pass };
 
   try {
     const res = await fetch(type === 'login' ? '/login' : '/register', {
@@ -163,14 +167,13 @@ async function auth(type) {
       localStorage.setItem('context_token', data.token);
       showChatScreen();
       connectSocket();
-      loadUsers();
+      loadChats();
+      loadProfile();
     } else {
-      document.getElementById('login-error').innerText =
-        data.message || 'Ошибка авторизации';
+      document.getElementById('login-error').innerText = data.message || 'Auth error';
     }
-  } catch (err) {
-    console.error(err);
-    document.getElementById('login-error').innerText = 'Ошибка соединения';
+  } catch {
+    document.getElementById('login-error').innerText = 'Connection error';
   }
 }
 
@@ -181,34 +184,47 @@ function logout() {
   location.reload();
 }
 
+function switchMainTab(tab, btn) {
+  mainTab = tab;
+  document.querySelectorAll('.sidebar-panel').forEach((p) => p.classList.remove('active'));
+  document.getElementById(`panel-${tab}`).classList.add('active');
+  document.querySelectorAll('.main-tabs button').forEach((b) => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+
+  if (tab === 'chats') loadChats();
+  if (tab === 'search') initSearchPanel();
+  if (tab === 'profile') loadProfile();
+}
+
+function setSearchMode(mode, btn) {
+  searchMode = mode;
+  document.querySelectorAll('.search-subtabs button').forEach((b) => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  clearSearch();
+  initSearchPanel();
+}
+
+function initSearchPanel() {
+  const placeholders = {
+    users: 'Username (Latin, min 2 chars)...',
+    files: 'Search files in your chats...',
+    web: 'Web search...',
+  };
+  document.getElementById('search-input').placeholder = placeholders[searchMode];
+  const list = document.getElementById('search-list');
+  list.innerHTML =
+    searchMode === 'users'
+      ? '<li class="sidebar-hint">Type a Latin username to find someone</li>'
+      : '<li class="sidebar-hint">Enter at least 2 characters</li>';
+}
+
 function clearSearch() {
   document.getElementById('search-input').value = '';
   document.getElementById('search-clear').style.display = 'none';
-  if (currentMode === 'users') loadUsers();
+  initSearchPanel();
 }
 
-function setMode(mode, btn) {
-  currentMode = mode;
-  document.getElementById('search-input').value = '';
-  document.getElementById('search-clear').style.display = 'none';
-  document.querySelectorAll('.search-tabs button').forEach((b) => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-
-  const placeholders = {
-    users: 'Поиск по имени...',
-    files: 'Поиск по файлам в чатах...',
-    web: 'Поиск в интернете...',
-  };
-  document.getElementById('search-input').placeholder = placeholders[mode] || 'Поиск...';
-
-  if (mode === 'users') loadUsers();
-  else {
-    document.getElementById('sidebar-list').innerHTML =
-      '<li class="sidebar-hint">Введите запрос (мин. 2 символа)</li>';
-  }
-}
-
-function renderUserItem(u, query = '') {
+function renderUserItem(u, query = '', listId = 'chats-list') {
   const li = document.createElement('li');
   li.className = 'user-item';
   if (currentChatUser === u.username) li.classList.add('active');
@@ -217,7 +233,7 @@ function renderUserItem(u, query = '') {
   const online = u.online || onlineUsers.has(u.username);
   const preview = u.lastMessage
     ? escapeHtml(u.lastMessage.slice(0, 50))
-    : '<span class="no-chat">Нет сообщений — напишите первым</span>';
+    : '<span class="no-chat">Start chat</span>';
   const time = u.lastTime ? `<span class="chat-time">${escapeHtml(u.lastTime)}</span>` : '';
 
   li.innerHTML = `
@@ -229,65 +245,77 @@ function renderUserItem(u, query = '') {
       </div>
       <div class="chat-row-bottom">
         <span class="preview">${preview}</span>
-        <span class="online-dot ${online ? 'is-online' : ''}" title="${online ? 'в сети' : 'не в сети'}"></span>
+        <span class="online-dot ${online ? 'is-online' : ''}"></span>
       </div>
     </div>`;
 
-  li.onclick = () => openChat(u.username, li);
+  li.onclick = () => {
+    openChat(u.username, li);
+    switchMainTab('chats', document.querySelector('.main-tabs button:first-child'));
+  };
   return li;
 }
 
-async function loadUsers(query = '') {
-  const list = document.getElementById('sidebar-list');
-  list.innerHTML = '<li class="sidebar-hint">Загрузка...</li>';
+async function loadChats() {
+  const list = document.getElementById('chats-list');
+  list.innerHTML = '<li class="sidebar-hint">Loading...</li>';
 
   try {
-    const url = query
-      ? `/users?q=${encodeURIComponent(query)}`
-      : '/users';
-    const res = await apiFetch(url);
-    const users = await res.json();
-    allUsersCache = users;
+    const res = await apiFetch('/chats');
+    const chats = await res.json();
     list.innerHTML = '';
 
-    if (!users.length) {
-      list.innerHTML = query
-        ? '<li class="sidebar-hint">Пользователи не найдены</li>'
-        : '<li class="sidebar-hint">Пока нет других пользователей</li>';
+    if (!chats.length) {
+      list.innerHTML = '<li class="sidebar-hint">No chats yet. Use Search → Users</li>';
       return;
     }
 
-    if (query) {
-      const header = document.createElement('li');
-      header.className = 'sidebar-section';
-      header.textContent = 'Результаты поиска';
-      list.appendChild(header);
-    } else {
-      const withChat = users.filter((u) => u.lastMessage);
-      const withoutChat = users.filter((u) => !u.lastMessage);
-      if (withChat.length) {
-        const h = document.createElement('li');
-        h.className = 'sidebar-section';
-        h.textContent = 'Недавние';
-        list.appendChild(h);
-        withChat.forEach((u) => list.appendChild(renderUserItem(u)));
-      }
-      if (withoutChat.length) {
-        const h = document.createElement('li');
-        h.className = 'sidebar-section';
-        h.textContent = 'Все пользователи';
-        list.appendChild(h);
-        withoutChat.forEach((u) => list.appendChild(renderUserItem(u)));
-      }
-      refreshOnlineIndicators();
-      return;
-    }
-
-    users.forEach((u) => list.appendChild(renderUserItem(u, query)));
+    chats.forEach((u) => list.appendChild(renderUserItem(u)));
     refreshOnlineIndicators();
   } catch (e) {
     console.error(e);
-    list.innerHTML = '<li class="sidebar-hint">Ошибка загрузки</li>';
+    list.innerHTML = '<li class="sidebar-hint">Failed to load chats</li>';
+  }
+}
+
+async function loadProfile() {
+  try {
+    const res = await apiFetch('/me');
+    const data = await res.json();
+    myEmail = data.email || '';
+    document.getElementById('profile-username').textContent = data.username;
+    document.getElementById('profile-email').textContent = data.email;
+    document.getElementById('profile-avatar').textContent = avatarLetter(data.username);
+    document.getElementById('profile-status').textContent = data.online ? 'You are online' : '';
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function wipeDatabase() {
+  const secret = document.getElementById('admin-secret-input').value;
+  const status = document.getElementById('wipe-status');
+  if (!secret) {
+    status.textContent = 'Enter ADMIN_SECRET from Render Environment';
+    return;
+  }
+  if (!confirm('Delete ALL users and ALL messages? This cannot be undone.')) return;
+
+  status.textContent = 'Deleting...';
+  try {
+    const res = await fetch('/admin/wipe-database', {
+      method: 'POST',
+      headers: { 'x-admin-secret': secret },
+    });
+    const data = await res.json();
+    if (data.success) {
+      status.textContent = 'Done. Database is empty. Sign out and register again.';
+      logout();
+    } else {
+      status.textContent = data.message || 'Failed';
+    }
+  } catch {
+    status.textContent = 'Request failed';
   }
 }
 
@@ -297,25 +325,21 @@ function openChat(username, liEl) {
   document.getElementById('input-area').style.display = 'flex';
   typingIndicator.textContent = '';
 
-  const headerOnline = document.getElementById('chat-header-online');
   const isOnline = onlineUsers.has(username);
-  if (headerOnline) headerOnline.classList.toggle('is-online', isOnline);
+  document.getElementById('chat-header-online')?.classList.toggle('is-online', isOnline);
   const statusEl = document.getElementById('chat-header-status');
-  if (statusEl) statusEl.textContent = isOnline ? 'в сети' : '';
+  if (statusEl) statusEl.textContent = isOnline ? 'online' : '';
 
-  document.querySelectorAll('#sidebar-list .user-item').forEach((el) => {
+  document.querySelectorAll('.user-item').forEach((el) => {
     el.classList.toggle('active', el.dataset.username === username);
   });
   if (liEl) liEl.classList.add('active');
 
   document.getElementById('chat-screen').classList.add('chat-open');
-
   const container = document.getElementById('messages-container');
-  container.innerHTML = '<p class="empty-chat loading">Загрузка...</p>';
+  container.innerHTML = '<p class="empty-chat loading">Loading...</p>';
 
-  if (socket?.connected) {
-    socket.emit('load_messages', { them: username });
-  }
+  if (socket?.connected) socket.emit('load_messages', { them: username });
 }
 
 function closeChatMobile() {
@@ -325,11 +349,7 @@ function closeChatMobile() {
 function sendMessage() {
   const input = document.getElementById('message-input');
   if (!input.value.trim() || !currentChatUser || !socket) return;
-
-  socket.emit('send_message', {
-    receiver: currentChatUser,
-    text: input.value.trim(),
-  });
+  socket.emit('send_message', { receiver: currentChatUser, text: input.value.trim() });
   input.value = '';
 }
 
@@ -338,13 +358,12 @@ async function uploadFile() {
   if (!file || !currentChatUser) return;
 
   if (file.size > 10 * 1024 * 1024) {
-    alert('Файл слишком большой. Максимум 10 МБ.');
+    alert('Max file size is 10 MB');
     return;
   }
 
   const formData = new FormData();
   formData.append('file', file);
-
   const attachBtn = document.querySelector('.attach-btn');
   attachBtn?.classList.add('uploading');
 
@@ -352,20 +371,20 @@ async function uploadFile() {
     const res = await apiFetch('/upload', { method: 'POST', body: formData });
     const data = await res.json();
     if (!res.ok || !data.fileUrl) {
-      alert(data.message || 'Не удалось загрузить файл');
+      alert(data.message || 'Upload failed');
       return;
     }
 
     socket.emit('send_message', {
       receiver: currentChatUser,
-      text: `📎 ${data.originalName}`,
+      text: `File: ${data.originalName}`,
       file: data.fileUrl,
       originalName: data.originalName,
     });
     document.getElementById('file-input').value = '';
   } catch (e) {
     console.error(e);
-    alert('Не удалось загрузить файл. Проверьте Cloudinary в Render.');
+    alert('Upload failed. Check Cloudinary settings on Render.');
   } finally {
     attachBtn?.classList.remove('uploading');
   }
@@ -377,19 +396,19 @@ function displayMessage(msg) {
   div.className = `message ${msg.sender === myUsername ? 'mine' : 'theirs'}`;
 
   let body = '';
-  if (msg.sender !== myUsername) {
-    body += `<b>${escapeHtml(msg.sender)}</b>`;
-  }
+  if (msg.sender !== myUsername) body += `<b>${escapeHtml(msg.sender)}</b>`;
   body += `<span class="msg-text">${escapeHtml(msg.text)}</span>`;
 
   if (msg.file) {
-    if (
+    const isImage =
       msg.file.match(/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i) ||
-      msg.file.includes('/image/')
-    ) {
+      msg.file.includes('/image/') ||
+      (msg.originalName && /\.(jpg|jpeg|png|gif|webp)$/i.test(msg.originalName));
+
+    if (isImage) {
       body += `<img src="${escapeHtml(msg.file)}" alt="image" loading="lazy" />`;
     } else {
-      const name = escapeHtml(msg.originalName || 'Скачать файл');
+      const name = escapeHtml(msg.originalName || 'Download file');
       body += `<a class="file-link" href="${escapeHtml(msg.file)}" target="_blank" rel="noopener">${name}</a>`;
     }
   }
@@ -399,47 +418,69 @@ function displayMessage(msg) {
   container.scrollTop = container.scrollHeight;
 }
 
-let typingDebounce;
 document.getElementById('message-input').addEventListener('input', () => {
   if (!currentChatUser || !socket) return;
-  clearTimeout(typingDebounce);
-  typingDebounce = setTimeout(() => {
-    socket.emit('typing', { to: currentChatUser });
-  }, 300);
+  clearTimeout(typingTimeout);
+  typingTimeout = setTimeout(() => socket.emit('typing', { to: currentChatUser }), 300);
 });
+
+socket?.on?.('user_typing', () => {});
 
 let searchDebounce;
 function handleSearch() {
   const input = document.getElementById('search-input');
-  const clearBtn = document.getElementById('search-clear');
-  clearBtn.style.display = input.value ? 'flex' : 'none';
-
+  document.getElementById('search-clear').style.display = input.value ? 'flex' : 'none';
   clearTimeout(searchDebounce);
   searchDebounce = setTimeout(runSearch, 280);
 }
 
 async function runSearch() {
   const query = document.getElementById('search-input').value.trim();
-  const list = document.getElementById('sidebar-list');
+  const list = document.getElementById('search-list');
 
-  if (currentMode === 'users') {
-    await loadUsers(query);
+  if (searchMode === 'users') {
+    if (query.length < 2) {
+      list.innerHTML = '<li class="sidebar-hint">Min 2 Latin characters (a-z, 0-9, _)</li>';
+      return;
+    }
+    if (!/^[a-zA-Z0-9_]+$/.test(query)) {
+      list.innerHTML = '<li class="sidebar-hint">Only Latin letters, numbers, _</li>';
+      return;
+    }
+    list.innerHTML = '<li class="sidebar-hint">Searching...</li>';
+    try {
+      const res = await apiFetch(`/users/search?q=${encodeURIComponent(query)}`);
+      const users = await res.json();
+      if (users.error) {
+        list.innerHTML = `<li class="sidebar-hint">${escapeHtml(users.error)}</li>`;
+        return;
+      }
+      list.innerHTML = '';
+      if (!users.length) {
+        list.innerHTML = '<li class="sidebar-hint">No users found</li>';
+        return;
+      }
+      users.forEach((u) => list.appendChild(renderUserItem({ ...u, lastMessage: null }, query)));
+      refreshOnlineIndicators();
+    } catch {
+      list.innerHTML = '<li class="sidebar-hint">Search error</li>';
+    }
     return;
   }
 
   if (query.length < 2) {
-    list.innerHTML = '<li class="sidebar-hint">Введите минимум 2 символа</li>';
+    list.innerHTML = '<li class="sidebar-hint">Enter at least 2 characters</li>';
     return;
   }
 
-  if (currentMode === 'files') {
-    list.innerHTML = '<li class="sidebar-hint">Ищем файлы...</li>';
+  if (searchMode === 'files') {
+    list.innerHTML = '<li class="sidebar-hint">Searching files...</li>';
     try {
       const res = await apiFetch(`/search/files?q=${encodeURIComponent(query)}`);
       const files = await res.json();
       list.innerHTML = '';
       if (!files.length) {
-        list.innerHTML = '<li class="sidebar-hint">Файлы не найдены</li>';
+        list.innerHTML = '<li class="sidebar-hint">No files found</li>';
         return;
       }
       files.forEach((f) => {
@@ -447,41 +488,32 @@ async function runSearch() {
         li.className = 'search-result';
         li.innerHTML = `
           <span class="material-icons">attach_file</span>
-          <div>
-            <strong>${escapeHtml(f.file)}</strong>
-            <small>От ${escapeHtml(f.sender)} · чат с ${escapeHtml(f.peer)}</small>
-          </div>`;
+          <div><strong>${escapeHtml(f.file)}</strong>
+          <small>${escapeHtml(f.peer)}</small></div>`;
         li.onclick = () => openChat(f.peer);
         list.appendChild(li);
       });
     } catch {
-      list.innerHTML = '<li class="sidebar-hint">Ошибка поиска</li>';
+      list.innerHTML = '<li class="sidebar-hint">Error</li>';
     }
     return;
   }
 
-  if (currentMode === 'web') {
-    list.innerHTML = '<li class="sidebar-hint">Ищем в интернете...</li>';
+  if (searchMode === 'web') {
+    list.innerHTML = '<li class="sidebar-hint">Searching web...</li>';
     try {
       const res = await apiFetch(`/search/web?q=${encodeURIComponent(query)}`);
       const results = await res.json();
       list.innerHTML = '';
-      if (!results.length) {
-        list.innerHTML = '<li class="sidebar-hint">Ничего не найдено</li>';
-        return;
-      }
       results.forEach((r) => {
         const li = document.createElement('li');
         li.className = 'search-result web';
-        li.innerHTML = `
-          <div>
-            <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener"><strong>${escapeHtml(r.title)}</strong></a>
-            <p>${escapeHtml((r.snippet || '').slice(0, 120))}</p>
-          </div>`;
+        li.innerHTML = `<div><a href="${escapeHtml(r.url)}" target="_blank" rel="noopener"><strong>${escapeHtml(r.title)}</strong></a>
+          <p>${escapeHtml((r.snippet || '').slice(0, 120))}</p></div>`;
         list.appendChild(li);
       });
     } catch {
-      list.innerHTML = '<li class="sidebar-hint">Ошибка веб-поиска</li>';
+      list.innerHTML = '<li class="sidebar-hint">Error</li>';
     }
   }
 }

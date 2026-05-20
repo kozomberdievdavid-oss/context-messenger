@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -10,15 +10,14 @@
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <!-- Авторизация -->
   <div id="login-screen" class="screen">
     <div class="login-box">
       <h1 class="logo">CONTEXT</h1>
-      <p class="login-subtitle">Мессенджер с поиском по файлам и вебу</p>
+      <p class="login-subtitle">Messenger · Latin usernames only</p>
 
       <div class="input-group">
         <span class="material-icons">person</span>
-        <input id="username-input" type="text" placeholder="Имя пользователя" autocomplete="username" />
+        <input id="username-input" type="text" placeholder="Username (a-z, 0-9, _)" pattern="[a-zA-Z0-9_]{3,20}" autocomplete="username" />
       </div>
       <div class="input-group">
         <span class="material-icons">email</span>
@@ -26,61 +25,84 @@
       </div>
       <div class="input-group">
         <span class="material-icons">lock</span>
-        <input id="password-input" type="password" placeholder="Пароль" autocomplete="current-password" />
+        <input id="password-input" type="password" placeholder="Password" autocomplete="current-password" />
       </div>
 
       <div class="auth-buttons">
-        <button class="primary-btn" type="button" onclick="auth('login')">Войти</button>
-        <button class="secondary-btn" type="button" onclick="auth('register')">Регистрация</button>
+        <button class="primary-btn" type="button" onclick="auth('login')">Sign in</button>
+        <button class="secondary-btn" type="button" onclick="auth('register')">Register</button>
       </div>
       <p id="login-error"></p>
     </div>
   </div>
 
-  <!-- Чат -->
   <div id="chat-screen" class="screen" style="display: none">
     <aside class="sidebar">
       <div class="sidebar-header">
         <h3>CONTEXT</h3>
-        <button class="icon-btn" type="button" onclick="logout()" title="Выйти">
-          <span class="material-icons">logout</span>
-        </button>
       </div>
 
-      <div class="search-tabs">
-        <button type="button" class="active" data-mode="users" onclick="setMode('users', this)">
-          <span class="material-icons">people</span>
-          <span class="tab-label">Чаты</span>
-        </button>
-        <button type="button" data-mode="files" onclick="setMode('files', this)">
-          <span class="material-icons">folder</span>
-          <span class="tab-label">Файлы</span>
-        </button>
-        <button type="button" data-mode="web" onclick="setMode('web', this)">
-          <span class="material-icons">public</span>
-          <span class="tab-label">Веб</span>
-        </button>
+      <!-- Panel: Chats -->
+      <div id="panel-chats" class="sidebar-panel active">
+        <ul id="chats-list"></ul>
+        <p class="panel-hint">No public user list. Find people in Search tab.</p>
       </div>
 
-      <div class="search-box">
-        <span class="material-icons search-icon">search</span>
-        <input
-          id="search-input"
-          type="search"
-          placeholder="Поиск по имени..."
-          oninput="handleSearch()"
-        />
-        <button type="button" id="search-clear" class="search-clear" onclick="clearSearch()" title="Очистить" style="display:none">
-          <span class="material-icons">close</span>
-        </button>
+      <!-- Panel: Search -->
+      <div id="panel-search" class="sidebar-panel">
+        <div class="search-subtabs">
+          <button type="button" class="active" data-mode="users" onclick="setSearchMode('users', this)">Users</button>
+          <button type="button" data-mode="files" onclick="setSearchMode('files', this)">Files</button>
+          <button type="button" data-mode="web" onclick="setSearchMode('web', this)">Web</button>
+        </div>
+        <div class="search-box">
+          <span class="material-icons search-icon">search</span>
+          <input id="search-input" type="search" placeholder="Find user (Latin)..." oninput="handleSearch()" />
+          <button type="button" id="search-clear" class="search-clear" onclick="clearSearch()" style="display:none">
+            <span class="material-icons">close</span>
+          </button>
+        </div>
+        <ul id="search-list"></ul>
       </div>
 
-      <ul id="sidebar-list"></ul>
+      <!-- Panel: Profile -->
+      <div id="panel-profile" class="sidebar-panel">
+        <div class="profile-card">
+          <div class="profile-avatar" id="profile-avatar">?</div>
+          <h4 id="profile-username">—</h4>
+          <p id="profile-email" class="profile-email">—</p>
+          <p id="profile-status" class="profile-status"></p>
+        </div>
+        <button type="button" class="profile-btn" onclick="logout()">
+          <span class="material-icons">logout</span> Sign out
+        </button>
+        <div class="profile-admin">
+          <p class="profile-admin-title">Reset database (admin)</p>
+          <input id="admin-secret-input" type="password" placeholder="ADMIN_SECRET from Render" />
+          <button type="button" class="danger-btn" onclick="wipeDatabase()">Delete all users &amp; messages</button>
+          <p id="wipe-status" class="wipe-status"></p>
+        </div>
+      </div>
+
+      <nav class="main-tabs">
+        <button type="button" class="active" onclick="switchMainTab('chats', this)">
+          <span class="material-icons">forum</span>
+          <span>Chats</span>
+        </button>
+        <button type="button" onclick="switchMainTab('search', this)">
+          <span class="material-icons">search</span>
+          <span>Search</span>
+        </button>
+        <button type="button" onclick="switchMainTab('profile', this)">
+          <span class="material-icons">person</span>
+          <span>Profile</span>
+        </button>
+      </nav>
     </aside>
 
     <main class="chat-area">
       <header class="chat-header">
-        <button type="button" class="back-btn" onclick="closeChatMobile()" title="Назад">
+        <button type="button" class="back-btn" onclick="closeChatMobile()">
           <span class="material-icons">arrow_back</span>
         </button>
         <div class="user-info">
@@ -89,7 +111,7 @@
             <span id="chat-header-online" class="online-dot"></span>
           </div>
           <div>
-            <span id="current-chat-user">Выберите чат</span>
+            <span id="current-chat-user">Select a chat</span>
             <span id="chat-header-status" class="chat-header-status"></span>
           </div>
         </div>
@@ -97,22 +119,16 @@
       </header>
 
       <div id="messages-container" class="messages-empty-hint">
-        <p class="empty-chat">Выберите собеседника слева, чтобы начать диалог</p>
+        <p class="empty-chat">Pick a chat or find a user in Search</p>
       </div>
 
       <div id="input-area" class="chat-input-area" style="display: none">
-        <label class="attach-btn" title="Прикрепить файл">
+        <label class="attach-btn" title="Attach file">
           <span class="material-icons">attach_file</span>
           <input id="file-input" type="file" hidden onchange="uploadFile()" />
         </label>
-        <input
-          id="message-input"
-          type="text"
-          placeholder="Сообщение..."
-          autocomplete="off"
-          onkeydown="if (event.key === 'Enter') sendMessage()"
-        />
-        <button class="send-btn" type="button" onclick="sendMessage()" title="Отправить">
+        <input id="message-input" type="text" placeholder="Message..." autocomplete="off" onkeydown="if (event.key === 'Enter') sendMessage()" />
+        <button class="send-btn" type="button" onclick="sendMessage()">
           <span class="material-icons">send</span>
         </button>
       </div>

@@ -193,6 +193,166 @@ button:hover {
   background: var(--bg-hover);
 }
 
+.sidebar-panel {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar-panel.active {
+  display: flex;
+}
+
+#chats-list,
+#search-list {
+  list-style: none;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.panel-hint {
+  padding: 12px 16px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-align: center;
+  border-top: 1px solid var(--border);
+}
+
+.main-tabs {
+  display: flex;
+  border-top: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.main-tabs button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 0;
+  padding: 10px 4px;
+  font-size: 0.7rem;
+}
+
+.main-tabs button .material-icons {
+  font-size: 22px;
+}
+
+.main-tabs button.active {
+  color: var(--accent);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.search-subtabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+
+.search-subtabs button {
+  flex: 1;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 12px 8px;
+  font-size: 0.82rem;
+  border-radius: 0;
+}
+
+.search-subtabs button.active {
+  color: var(--accent);
+  border-bottom: 2px solid var(--accent);
+}
+
+.profile-card {
+  padding: 24px 20px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+}
+
+.profile-avatar {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), #818cf8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.profile-email {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  margin-top: 4px;
+}
+
+.profile-status {
+  color: var(--success);
+  font-size: 0.8rem;
+  margin-top: 8px;
+}
+
+.profile-btn {
+  width: calc(100% - 32px);
+  margin: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--bg-hover);
+  color: var(--text-main);
+  border: 1px solid var(--border);
+}
+
+.profile-admin {
+  margin: 8px 16px 16px;
+  padding: 14px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 12px;
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.profile-admin-title {
+  font-size: 0.8rem;
+  color: var(--danger);
+  margin-bottom: 10px;
+}
+
+.profile-admin input {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text-main);
+}
+
+.danger-btn {
+  width: 100%;
+  background: var(--danger);
+  color: white;
+  padding: 12px;
+}
+
+.danger-btn:hover {
+  filter: brightness(1.1);
+  transform: none;
+}
+
+.wipe-status {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 8px;
+  min-height: 16px;
+}
+
 .search-tabs {
   display: flex;
   border-bottom: 1px solid var(--border);
@@ -285,24 +445,24 @@ button:hover {
   background: transparent !important;
 }
 
-#sidebar-list {
-  list-style: none;
-  overflow-y: auto;
-  flex: 1;
-}
-
-#sidebar-list li {
+#sidebar-list li,
+#chats-list li,
+#search-list li {
   padding: 14px 18px;
   cursor: pointer;
   border-bottom: 1px solid rgba(255, 255, 255, 0.03);
   transition: background 0.15s;
 }
 
-#sidebar-list li:hover {
+#sidebar-list li:hover,
+#chats-list li:hover,
+#search-list li:hover {
   background: var(--bg-hover);
 }
 
-#sidebar-list .user-item {
+#sidebar-list .user-item,
+#chats-list .user-item,
+#search-list .user-item {
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -310,7 +470,9 @@ button:hover {
   padding: 12px 16px !important;
 }
 
-#sidebar-list .user-item.active {
+#sidebar-list .user-item.active,
+#chats-list .user-item.active,
+#search-list .user-item.active {
   background: rgba(99, 102, 241, 0.14);
 }
 
@@ -345,7 +507,9 @@ button:hover {
   margin-top: 4px;
 }
 
-#sidebar-list .user-name {
+#sidebar-list .user-name,
+#chats-list .user-name,
+#search-list .user-name {
   font-weight: 600;
   font-size: 0.95rem;
   white-space: nowrap;
@@ -353,7 +517,9 @@ button:hover {
   text-overflow: ellipsis;
 }
 
-#sidebar-list .user-name mark {
+#sidebar-list .user-name mark,
+#chats-list .user-name mark,
+#search-list .user-name mark {
   background: rgba(99, 102, 241, 0.35);
   color: #e0e7ff;
   border-radius: 2px;
@@ -366,7 +532,9 @@ button:hover {
   flex-shrink: 0;
 }
 
-#sidebar-list .preview {
+#sidebar-list .preview,
+#chats-list .preview,
+#search-list .preview {
   font-size: 0.82rem;
   color: var(--text-muted);
   white-space: nowrap;

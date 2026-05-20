@@ -1,5 +1,6 @@
 require('dotenv').config();
 
+const path = require('path');
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -10,6 +11,9 @@ const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
+
+const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
+const SEARCH_QUERY_RE = /^[a-zA-Z0-9_]+$/;
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES = '7d';
@@ -37,18 +41,44 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+function isValidUsername(username) {
+  return USERNAME_RE.test(String(username || ''));
+}
+
+function sanitizeFilename(name) {
+  const raw = Buffer.from(name || 'file', 'latin1').toString('utf8');
+  const ext = path.extname(raw).replace(/[^a-zA-Z0-9.]/g, '').toLowerCase();
+  let base = path
+    .basename(raw, path.extname(raw))
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .replace(/_+/g, '_')
+    .slice(0, 60);
+  if (!base) base = 'file';
+  return base + ext;
+}
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 const storage = new CloudinaryStorage({
   cloudinary,
-  params: { folder: 'context_uploads' },
+  params: async (req, file) => {
+    const isImage = (file.mimetype || '').startsWith('image/');
+    const safe = sanitizeFilename(file.originalname).replace(/\.[^.]+$/, '');
+    return {
+      folder: 'context_uploads',
+      resource_type: isImage ? 'image' : 'raw',
+      public_id: `${Date.now()}_${safe}`.slice(0, 120),
+    };
+  },
 });
 const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 },
 });
-
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 function getOnlineUsernames() {
   return [...userSockets.keys()];
@@ -130,8 +160,24 @@ function emitToUser(username, event, data) {
 
 // ——— REST ———
 
+app.get('/me', authMiddleware, async (req, res) => {
+  const user = await User.findOne({ username: req.user.username }, 'username email').lean();
+  if (!user) return res.status(404).json({ success: false });
+  res.json({
+    username: user.username,
+    email: user.email,
+    online: userSockets.has(user.username),
+  });
+});
+
 app.post('/register', async (req, res) => {
   const { username, email, password } = req.body;
+  if (!isValidUsername(username)) {
+    return res.json({
+      success: false,
+      message: 'Username: only a-z, A-Z, 0-9, _ (3-20 characters)',
+    });
+  }
   try {
     const existing = await User.findOne({ $or: [{ username }, { email }] });
     if (existing) {
@@ -160,59 +206,92 @@ app.post('/login', async (req, res) => {
   }
 });
 
-app.get('/users', authMiddleware, async (req, res) => {
-  const me = req.user.username;
-  const q = String(req.query.q || '').trim();
-
-  const filter = { username: { $ne: me } };
-  if (q.length > 0) {
-    filter.username = { $ne: me, $regex: escapeRegex(q), $options: 'i' };
-  }
-
-  const users = await User.find(filter, 'username').limit(80).lean();
-  if (!users.length) return res.json([]);
-
-  const usernames = users.map((u) => u.username);
+async function buildChatList(me, peerNames) {
+  if (!peerNames.length) return [];
+  const users = await User.find({ username: { $in: peerNames } }, 'username').lean();
   const lastMessages = await Message.aggregate([
     {
       $match: {
         $or: [
-          { sender: me, receiver: { $in: usernames } },
-          { sender: { $in: usernames }, receiver: me },
+          { sender: me, receiver: { $in: peerNames } },
+          { sender: { $in: peerNames }, receiver: me },
         ],
       },
     },
     { $sort: { createdAt: -1 } },
     {
       $group: {
-        _id: {
-          $cond: [{ $eq: ['$sender', me] }, '$receiver', '$sender'],
-        },
+        _id: { $cond: [{ $eq: ['$sender', me] }, '$receiver', '$sender'] },
         text: { $first: '$text' },
         time: { $first: '$time' },
         createdAt: { $first: '$createdAt' },
       },
     },
   ]);
-
   const lastMap = Object.fromEntries(lastMessages.map((m) => [m._id, m]));
+  return users
+    .map((u) => ({
+      username: u.username,
+      online: userSockets.has(u.username),
+      lastMessage: lastMap[u.username]?.text?.slice(0, 80) || null,
+      lastTime: lastMap[u.username]?.time || null,
+      lastActivity: lastMap[u.username]?.createdAt || null,
+    }))
+    .sort((a, b) => {
+      const ta = a.lastActivity ? new Date(a.lastActivity).getTime() : 0;
+      const tb = b.lastActivity ? new Date(b.lastActivity).getTime() : 0;
+      return tb - ta;
+    });
+}
 
-  const result = users.map((u) => ({
-    username: u.username,
-    online: userSockets.has(u.username),
-    lastMessage: lastMap[u.username]?.text?.slice(0, 80) || null,
-    lastTime: lastMap[u.username]?.time || null,
-    lastActivity: lastMap[u.username]?.createdAt || null,
-  }));
+app.get('/chats', authMiddleware, async (req, res) => {
+  const me = req.user.username;
+  const peers = await Message.aggregate([
+    { $match: { $or: [{ sender: me }, { receiver: me }] } },
+    {
+      $group: {
+        _id: { $cond: [{ $eq: ['$sender', me] }, '$receiver', '$sender'] },
+      },
+    },
+  ]);
+  const peerNames = peers.map((p) => p._id).filter((n) => n && n !== me);
+  res.json(await buildChatList(me, peerNames));
+});
 
-  result.sort((a, b) => {
-    const ta = a.lastActivity ? new Date(a.lastActivity).getTime() : 0;
-    const tb = b.lastActivity ? new Date(b.lastActivity).getTime() : 0;
-    if (tb !== ta) return tb - ta;
-    return a.username.localeCompare(b.username, 'ru');
-  });
+app.get('/users/search', authMiddleware, async (req, res) => {
+  const me = req.user.username;
+  const q = String(req.query.q || '').trim();
+  if (q.length < 2) return res.json([]);
+  if (!SEARCH_QUERY_RE.test(q)) {
+    return res.json({
+      error: 'Use Latin letters, numbers and _ only',
+    });
+  }
 
-  res.json(result);
+  const users = await User.find(
+    { username: { $ne: me, $regex: escapeRegex(q), $options: 'i' } },
+    'username'
+  )
+    .limit(20)
+    .lean();
+
+  res.json(
+    users.map((u) => ({
+      username: u.username,
+      online: userSockets.has(u.username),
+    }))
+  );
+});
+
+app.post('/admin/wipe-database', async (req, res) => {
+  const secret = req.headers['x-admin-secret'];
+  if (!process.env.ADMIN_SECRET || secret !== process.env.ADMIN_SECRET) {
+    return res.status(403).json({ success: false, message: 'Forbidden' });
+  }
+  await Message.deleteMany({});
+  await User.deleteMany({});
+  userSockets.clear();
+  res.json({ success: true, message: 'All users and messages deleted' });
 });
 
 app.post('/upload', authMiddleware, (req, res) => {
@@ -231,7 +310,7 @@ app.post('/upload', authMiddleware, (req, res) => {
     if (!fileUrl) {
       return res.status(500).json({ success: false, message: 'Cloudinary не вернул ссылку' });
     }
-    const originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+    const originalName = sanitizeFilename(req.file.originalname);
     res.json({ success: true, fileUrl, originalName });
   });
 });
