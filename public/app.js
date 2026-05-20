@@ -5,10 +5,11 @@ const messageSound = new Audio(
 
 let socket = null;
 let myUsername = '';
-let authToken = '';
 let currentChatUser = '';
 let currentMode = 'users';
 let typingTimeout;
+let allUsersCache = [];
+const onlineUsers = new Set();
 
 function getToken() {
   return localStorage.getItem('context_token') || '';
@@ -31,6 +32,23 @@ async function apiFetch(url, options = {}) {
   return res;
 }
 
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str ?? '';
+  return d.innerHTML;
+}
+
+function highlightMatch(text, query) {
+  const safe = escapeHtml(text);
+  if (!query) return safe;
+  const re = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  return safe.replace(re, '<mark>$1</mark>');
+}
+
+function avatarLetter(name) {
+  return (name?.[0] || '?').toUpperCase();
+}
+
 function connectSocket() {
   if (socket) socket.disconnect();
   socket = io({ auth: { token: getToken() } });
@@ -39,6 +57,18 @@ function connectSocket() {
     document.getElementById('login-error').innerText =
       'Не удалось подключиться. Войдите снова.';
     logout();
+  });
+
+  socket.on('presence_list', ({ online }) => {
+    onlineUsers.clear();
+    online.forEach((u) => onlineUsers.add(u));
+    refreshOnlineIndicators();
+  });
+
+  socket.on('presence_update', ({ username, online }) => {
+    if (online) onlineUsers.add(username);
+    else onlineUsers.delete(username);
+    refreshOnlineIndicators();
   });
 
   socket.on('message_history', (messages) => {
@@ -62,7 +92,9 @@ function connectSocket() {
       displayMessage(msg);
       if (msg.sender !== myUsername) messageSound.play().catch(() => {});
     }
-    updateSidebarPreview(msg);
+    if (currentMode === 'users' && !document.getElementById('search-input').value.trim()) {
+      loadUsers();
+    }
   });
 
   socket.on('user_typing', ({ from, to }) => {
@@ -76,10 +108,19 @@ function connectSocket() {
   });
 }
 
-function escapeHtml(str) {
-  const d = document.createElement('div');
-  d.textContent = str ?? '';
-  return d.innerHTML;
+function refreshOnlineIndicators() {
+  document.querySelectorAll('#sidebar-list .user-item').forEach((li) => {
+    const u = li.dataset.username;
+    const dot = li.querySelector('.online-dot');
+    if (dot) dot.classList.toggle('is-online', onlineUsers.has(u));
+  });
+  const headerDot = document.getElementById('chat-header-online');
+  if (headerDot && currentChatUser) {
+    const on = onlineUsers.has(currentChatUser);
+    headerDot.classList.toggle('is-online', on);
+    const statusEl = document.getElementById('chat-header-status');
+    if (statusEl) statusEl.textContent = on ? 'в сети' : '';
+  }
 }
 
 function showChatScreen() {
@@ -92,7 +133,6 @@ window.onload = () => {
   const savedToken = getToken();
   if (savedUser && savedToken) {
     myUsername = savedUser;
-    authToken = savedToken;
     showChatScreen();
     connectSocket();
     loadUsers();
@@ -119,15 +159,11 @@ async function auth(type) {
 
     if (data.success && data.token) {
       myUsername = data.username;
-      authToken = data.token;
       localStorage.setItem('context_user', data.username);
       localStorage.setItem('context_token', data.token);
       showChatScreen();
       connectSocket();
       loadUsers();
-      if (type === 'register') {
-        document.getElementById('login-error').innerText = '';
-      }
     } else {
       document.getElementById('login-error').innerText =
         data.message || 'Ошибка авторизации';
@@ -145,14 +181,21 @@ function logout() {
   location.reload();
 }
 
+function clearSearch() {
+  document.getElementById('search-input').value = '';
+  document.getElementById('search-clear').style.display = 'none';
+  if (currentMode === 'users') loadUsers();
+}
+
 function setMode(mode, btn) {
   currentMode = mode;
   document.getElementById('search-input').value = '';
+  document.getElementById('search-clear').style.display = 'none';
   document.querySelectorAll('.search-tabs button').forEach((b) => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
 
   const placeholders = {
-    users: 'Найти пользователя...',
+    users: 'Поиск по имени...',
     files: 'Поиск по файлам в чатах...',
     web: 'Поиск в интернете...',
   };
@@ -165,28 +208,86 @@ function setMode(mode, btn) {
   }
 }
 
-async function loadUsers() {
+function renderUserItem(u, query = '') {
+  const li = document.createElement('li');
+  li.className = 'user-item';
+  if (currentChatUser === u.username) li.classList.add('active');
+  li.dataset.username = u.username;
+
+  const online = u.online || onlineUsers.has(u.username);
+  const preview = u.lastMessage
+    ? escapeHtml(u.lastMessage.slice(0, 50))
+    : '<span class="no-chat">Нет сообщений — напишите первым</span>';
+  const time = u.lastTime ? `<span class="chat-time">${escapeHtml(u.lastTime)}</span>` : '';
+
+  li.innerHTML = `
+    <div class="avatar">${escapeHtml(avatarLetter(u.username))}</div>
+    <div class="chat-meta">
+      <div class="chat-row-top">
+        <span class="user-name">${highlightMatch(u.username, query)}</span>
+        ${time}
+      </div>
+      <div class="chat-row-bottom">
+        <span class="preview">${preview}</span>
+        <span class="online-dot ${online ? 'is-online' : ''}" title="${online ? 'в сети' : 'не в сети'}"></span>
+      </div>
+    </div>`;
+
+  li.onclick = () => openChat(u.username, li);
+  return li;
+}
+
+async function loadUsers(query = '') {
+  const list = document.getElementById('sidebar-list');
+  list.innerHTML = '<li class="sidebar-hint">Загрузка...</li>';
+
   try {
-    const res = await apiFetch('/users');
+    const url = query
+      ? `/users?q=${encodeURIComponent(query)}`
+      : '/users';
+    const res = await apiFetch(url);
     const users = await res.json();
-    const list = document.getElementById('sidebar-list');
+    allUsersCache = users;
     list.innerHTML = '';
 
     if (!users.length) {
-      list.innerHTML = '<li class="sidebar-hint">Пока нет других пользователей</li>';
+      list.innerHTML = query
+        ? '<li class="sidebar-hint">Пользователи не найдены</li>'
+        : '<li class="sidebar-hint">Пока нет других пользователей</li>';
       return;
     }
 
-    users.forEach((u) => {
-      const li = document.createElement('li');
-      li.className = 'user-item';
-      li.dataset.username = u.username;
-      li.innerHTML = `<span class="user-name">${escapeHtml(u.username)}</span>`;
-      li.onclick = () => openChat(u.username, li);
-      list.appendChild(li);
-    });
+    if (query) {
+      const header = document.createElement('li');
+      header.className = 'sidebar-section';
+      header.textContent = 'Результаты поиска';
+      list.appendChild(header);
+    } else {
+      const withChat = users.filter((u) => u.lastMessage);
+      const withoutChat = users.filter((u) => !u.lastMessage);
+      if (withChat.length) {
+        const h = document.createElement('li');
+        h.className = 'sidebar-section';
+        h.textContent = 'Недавние';
+        list.appendChild(h);
+        withChat.forEach((u) => list.appendChild(renderUserItem(u)));
+      }
+      if (withoutChat.length) {
+        const h = document.createElement('li');
+        h.className = 'sidebar-section';
+        h.textContent = 'Все пользователи';
+        list.appendChild(h);
+        withoutChat.forEach((u) => list.appendChild(renderUserItem(u)));
+      }
+      refreshOnlineIndicators();
+      return;
+    }
+
+    users.forEach((u) => list.appendChild(renderUserItem(u, query)));
+    refreshOnlineIndicators();
   } catch (e) {
     console.error(e);
+    list.innerHTML = '<li class="sidebar-hint">Ошибка загрузки</li>';
   }
 }
 
@@ -196,10 +297,18 @@ function openChat(username, liEl) {
   document.getElementById('input-area').style.display = 'flex';
   typingIndicator.textContent = '';
 
+  const headerOnline = document.getElementById('chat-header-online');
+  const isOnline = onlineUsers.has(username);
+  if (headerOnline) headerOnline.classList.toggle('is-online', isOnline);
+  const statusEl = document.getElementById('chat-header-status');
+  if (statusEl) statusEl.textContent = isOnline ? 'в сети' : '';
+
   document.querySelectorAll('#sidebar-list .user-item').forEach((el) => {
     el.classList.toggle('active', el.dataset.username === username);
   });
   if (liEl) liEl.classList.add('active');
+
+  document.getElementById('chat-screen').classList.add('chat-open');
 
   const container = document.getElementById('messages-container');
   container.innerHTML = '<p class="empty-chat loading">Загрузка...</p>';
@@ -207,6 +316,10 @@ function openChat(username, liEl) {
   if (socket?.connected) {
     socket.emit('load_messages', { them: username });
   }
+}
+
+function closeChatMobile() {
+  document.getElementById('chat-screen').classList.remove('chat-open');
 }
 
 function sendMessage() {
@@ -224,13 +337,24 @@ async function uploadFile() {
   const file = document.getElementById('file-input').files[0];
   if (!file || !currentChatUser) return;
 
+  if (file.size > 10 * 1024 * 1024) {
+    alert('Файл слишком большой. Максимум 10 МБ.');
+    return;
+  }
+
   const formData = new FormData();
   formData.append('file', file);
+
+  const attachBtn = document.querySelector('.attach-btn');
+  attachBtn?.classList.add('uploading');
 
   try {
     const res = await apiFetch('/upload', { method: 'POST', body: formData });
     const data = await res.json();
-    if (!data.fileUrl) return;
+    if (!res.ok || !data.fileUrl) {
+      alert(data.message || 'Не удалось загрузить файл');
+      return;
+    }
 
     socket.emit('send_message', {
       receiver: currentChatUser,
@@ -241,7 +365,9 @@ async function uploadFile() {
     document.getElementById('file-input').value = '';
   } catch (e) {
     console.error(e);
-    alert('Не удалось загрузить файл');
+    alert('Не удалось загрузить файл. Проверьте Cloudinary в Render.');
+  } finally {
+    attachBtn?.classList.remove('uploading');
   }
 }
 
@@ -250,7 +376,11 @@ function displayMessage(msg) {
   const div = document.createElement('div');
   div.className = `message ${msg.sender === myUsername ? 'mine' : 'theirs'}`;
 
-  let body = `<b>${escapeHtml(msg.sender)}</b><span class="msg-text">${escapeHtml(msg.text)}</span>`;
+  let body = '';
+  if (msg.sender !== myUsername) {
+    body += `<b>${escapeHtml(msg.sender)}</b>`;
+  }
+  body += `<span class="msg-text">${escapeHtml(msg.text)}</span>`;
 
   if (msg.file) {
     if (
@@ -269,19 +399,6 @@ function displayMessage(msg) {
   container.scrollTop = container.scrollHeight;
 }
 
-function updateSidebarPreview(msg) {
-  const peer = msg.sender === myUsername ? msg.receiver : msg.sender;
-  const item = document.querySelector(`#sidebar-list .user-item[data-username="${peer}"]`);
-  if (!item) return;
-  let preview = item.querySelector('.preview');
-  if (!preview) {
-    preview = document.createElement('span');
-    preview.className = 'preview';
-    item.appendChild(preview);
-  }
-  preview.textContent = (msg.text || '📎 Файл').slice(0, 40);
-}
-
 let typingDebounce;
 document.getElementById('message-input').addEventListener('input', () => {
   if (!currentChatUser || !socket) return;
@@ -292,9 +409,13 @@ document.getElementById('message-input').addEventListener('input', () => {
 });
 
 let searchDebounce;
-async function handleSearch() {
+function handleSearch() {
+  const input = document.getElementById('search-input');
+  const clearBtn = document.getElementById('search-clear');
+  clearBtn.style.display = input.value ? 'flex' : 'none';
+
   clearTimeout(searchDebounce);
-  searchDebounce = setTimeout(runSearch, 350);
+  searchDebounce = setTimeout(runSearch, 280);
 }
 
 async function runSearch() {
@@ -302,11 +423,7 @@ async function runSearch() {
   const list = document.getElementById('sidebar-list');
 
   if (currentMode === 'users') {
-    if (!query) return loadUsers();
-    list.querySelectorAll('.user-item').forEach((li) => {
-      const name = li.dataset.username?.toLowerCase() || '';
-      li.style.display = name.includes(query.toLowerCase()) ? '' : 'none';
-    });
+    await loadUsers(query);
     return;
   }
 
@@ -337,7 +454,7 @@ async function runSearch() {
         li.onclick = () => openChat(f.peer);
         list.appendChild(li);
       });
-    } catch (e) {
+    } catch {
       list.innerHTML = '<li class="sidebar-hint">Ошибка поиска</li>';
     }
     return;
@@ -363,7 +480,7 @@ async function runSearch() {
           </div>`;
         list.appendChild(li);
       });
-    } catch (e) {
+    } catch {
       list.innerHTML = '<li class="sidebar-hint">Ошибка веб-поиска</li>';
     }
   }

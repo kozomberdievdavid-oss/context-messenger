@@ -41,7 +41,22 @@ const storage = new CloudinaryStorage({
   cloudinary,
   params: { folder: 'context_uploads' },
 });
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getOnlineUsernames() {
+  return [...userSockets.keys()];
+}
+
+function broadcastPresence(username, online) {
+  io.emit('presence_update', { username, online });
+}
 
 const UserSchema = new mongoose.Schema({
   username: { type: String, unique: true },
@@ -146,17 +161,79 @@ app.post('/login', async (req, res) => {
 });
 
 app.get('/users', authMiddleware, async (req, res) => {
-  const users = await User.find(
-    { username: { $ne: req.user.username } },
-    'username'
-  ).lean();
-  res.json(users);
+  const me = req.user.username;
+  const q = String(req.query.q || '').trim();
+
+  const filter = { username: { $ne: me } };
+  if (q.length > 0) {
+    filter.username = { $ne: me, $regex: escapeRegex(q), $options: 'i' };
+  }
+
+  const users = await User.find(filter, 'username').limit(80).lean();
+  if (!users.length) return res.json([]);
+
+  const usernames = users.map((u) => u.username);
+  const lastMessages = await Message.aggregate([
+    {
+      $match: {
+        $or: [
+          { sender: me, receiver: { $in: usernames } },
+          { sender: { $in: usernames }, receiver: me },
+        ],
+      },
+    },
+    { $sort: { createdAt: -1 } },
+    {
+      $group: {
+        _id: {
+          $cond: [{ $eq: ['$sender', me] }, '$receiver', '$sender'],
+        },
+        text: { $first: '$text' },
+        time: { $first: '$time' },
+        createdAt: { $first: '$createdAt' },
+      },
+    },
+  ]);
+
+  const lastMap = Object.fromEntries(lastMessages.map((m) => [m._id, m]));
+
+  const result = users.map((u) => ({
+    username: u.username,
+    online: userSockets.has(u.username),
+    lastMessage: lastMap[u.username]?.text?.slice(0, 80) || null,
+    lastTime: lastMap[u.username]?.time || null,
+    lastActivity: lastMap[u.username]?.createdAt || null,
+  }));
+
+  result.sort((a, b) => {
+    const ta = a.lastActivity ? new Date(a.lastActivity).getTime() : 0;
+    const tb = b.lastActivity ? new Date(b.lastActivity).getTime() : 0;
+    if (tb !== ta) return tb - ta;
+    return a.username.localeCompare(b.username, 'ru');
+  });
+
+  res.json(result);
 });
 
-app.post('/upload', authMiddleware, upload.single('file'), (req, res) => {
-  if (!req.file) return res.status(400).json({ success: false, message: 'Нет файла' });
-  const originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
-  res.json({ fileUrl: req.file.path, originalName });
+app.post('/upload', authMiddleware, (req, res) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      const msg =
+        err.code === 'LIMIT_FILE_SIZE'
+          ? 'Файл слишком большой (макс. 10 МБ)'
+          : err.message || 'Ошибка загрузки';
+      return res.status(400).json({ success: false, message: msg });
+    }
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'Файл не выбран' });
+    }
+    const fileUrl = req.file.path || req.file.secure_url;
+    if (!fileUrl) {
+      return res.status(500).json({ success: false, message: 'Cloudinary не вернул ссылку' });
+    }
+    const originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+    res.json({ success: true, fileUrl, originalName });
+  });
 });
 
 app.get('/search/files', authMiddleware, async (req, res) => {
@@ -260,8 +337,12 @@ io.on('connection', (socket) => {
   addSocket(username, socket.id);
   console.log(`🔌 ${username} подключился`);
 
+  socket.emit('presence_list', { online: getOnlineUsernames() });
+  broadcastPresence(username, true);
+
   socket.on('disconnect', () => {
     removeSocket(username, socket.id);
+    broadcastPresence(username, userSockets.has(username));
     console.log(`🔌 ${username} отключился`);
   });
 

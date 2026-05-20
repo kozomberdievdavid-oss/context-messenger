@@ -63,12 +63,16 @@
       </div>
 
       <div class="search-box">
+        <span class="material-icons search-icon">search</span>
         <input
           id="search-input"
           type="search"
-          placeholder="Поиск..."
+          placeholder="Поиск по имени..."
           oninput="handleSearch()"
         />
+        <button type="button" id="search-clear" class="search-clear" onclick="clearSearch()" title="Очистить" style="display:none">
+          <span class="material-icons">close</span>
+        </button>
       </div>
 
       <ul id="sidebar-list"></ul>
@@ -76,9 +80,18 @@
 
     <main class="chat-area">
       <header class="chat-header">
+        <button type="button" class="back-btn" onclick="closeChatMobile()" title="Назад">
+          <span class="material-icons">arrow_back</span>
+        </button>
         <div class="user-info">
-          <span class="material-icons">account_circle</span>
-          <span id="current-chat-user">Выберите чат</span>
+          <div class="header-avatar-wrap">
+            <span class="material-icons">account_circle</span>
+            <span id="chat-header-online" class="online-dot"></span>
+          </div>
+          <div>
+            <span id="current-chat-user">Выберите чат</span>
+            <span id="chat-header-status" class="chat-header-status"></span>
+          </div>
         </div>
         <p id="typing-indicator" class="typing-indicator"></p>
       </header>
