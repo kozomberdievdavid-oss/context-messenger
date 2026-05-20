@@ -1,0 +1,13 @@
+# Render Blueprint — Web Service для CONTEXT
+# Переменные с секретами задайте в Dashboard → Environment (не в этом файле)
+services:
+  - type: web
+    name: context-messenger
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "20"

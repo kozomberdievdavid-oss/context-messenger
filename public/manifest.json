@@ -1,8 +1,9 @@
 {
-  "name": "Context Messenger",
-  "short_name": "context",
+  "name": "CONTEXT Messenger",
+  "short_name": "CONTEXT",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f0f0f",
-  "theme_color": "#0f0f0f"
+  "background_color": "#0b0f19",
+  "theme_color": "#6366f1",
+  "description": "Мессенджер с поиском по файлам и вебу"
 }
