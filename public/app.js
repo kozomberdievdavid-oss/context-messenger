@@ -390,17 +390,23 @@ async function saveProfile() {
   }
 }
 
-async function uploadAvatar() {
-  const file = document.getElementById('avatar-input').files[0];
+function pickAvatar() {
+  document.getElementById('avatar-input')?.click();
+}
+
+function onAvatarFilePicked(input) {
+  const file = input.files?.[0];
   if (!file) return;
-  if (!file.type.startsWith('image/')) {
-    alert(t('upload_fail'));
-    return;
-  }
+  AvatarCrop.open(file, uploadAvatarBlob);
+  input.value = '';
+}
+
+async function uploadAvatarBlob(blob) {
+  if (!blob) return;
   const status = document.getElementById('profile-save-status');
   status.textContent = t('loading');
   const fd = new FormData();
-  fd.append('avatar', file);
+  fd.append('avatar', blob, 'avatar.jpg');
   try {
     const res = await apiFetch('/me/avatar', { method: 'POST', body: fd });
     const data = await res.json();
@@ -418,7 +424,6 @@ async function uploadAvatar() {
     status.textContent = t('upload_fail');
     alert(t('upload_fail'));
   }
-  document.getElementById('avatar-input').value = '';
 }
 
 async function loadAdminStats() {
@@ -485,10 +490,11 @@ async function viewPeerProfile() {
   const p = peerProfileCache || { username: currentChatUser };
   const av = document.getElementById('peer-sheet-avatar');
   if (p.avatarUrl) {
-    av.innerHTML = `<img class="profile-avatar-img large" src="${escapeHtml(p.avatarUrl)}" alt=""/>`;
+    av.innerHTML = `<img src="${escapeHtml(p.avatarUrl)}" alt="" />`;
+    av.className = 'peer-avatar-large has-img';
   } else {
     av.textContent = (currentChatUser[0] || '?').toUpperCase();
-    av.className = 'profile-avatar large';
+    av.className = 'peer-avatar-large';
   }
   document.getElementById('peer-sheet-name').textContent = p.username || currentChatUser;
   document.getElementById('peer-sheet-status').textContent = onlineUsers.has(currentChatUser)
