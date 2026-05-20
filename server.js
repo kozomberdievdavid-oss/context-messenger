@@ -92,7 +92,7 @@ const avatarStorage = new CloudinaryStorage({
   params: {
     folder: 'context_avatars',
     resource_type: 'image',
-    transformation: [{ width: 256, height: 256, crop: 'fill', gravity: 'face' }],
+    transformation: [{ width: 256, height: 256, crop: 'fill' }],
   },
 });
 const uploadAvatar = multer({
@@ -220,7 +220,10 @@ app.post('/me/avatar', authMiddleware, (req, res) => {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No image' });
     }
-    const avatarUrl = req.file.path || req.file.secure_url;
+    const avatarUrl = req.file.secure_url || req.file.path || req.file.url;
+    if (!avatarUrl) {
+      return res.status(500).json({ success: false, message: 'Cloudinary URL missing' });
+    }
     await User.updateOne({ username: req.user.username }, { avatarUrl });
     res.json({ success: true, avatarUrl });
   });

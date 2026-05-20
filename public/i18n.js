@@ -56,6 +56,9 @@ const I18N = {
     recent: 'Recent',
     start_chat: 'Start chat',
     file_label: 'File',
+    open_profile: 'Open profile',
+    view_profile: 'View profile',
+    more_menu: 'Menu',
   },
   ru: {
     app_subtitle: 'Мессенджер',
@@ -114,6 +117,9 @@ const I18N = {
     recent: 'Недавние',
     start_chat: 'Начать чат',
     file_label: 'Файл',
+    open_profile: 'Открыть профиль',
+    view_profile: 'Профиль',
+    more_menu: 'Меню',
   },
   ky: {
     app_subtitle: 'Мессенджер',
@@ -172,6 +178,9 @@ const I18N = {
     recent: 'Акыркылар',
     start_chat: 'Чат баштоо',
     file_label: 'Файл',
+    open_profile: 'Профиль ачуу',
+    view_profile: 'Профиль',
+    more_menu: 'Меню',
   },
 };
 

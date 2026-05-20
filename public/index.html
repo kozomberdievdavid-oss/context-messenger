@@ -16,11 +16,8 @@
 </head>
 <body>
   <div id="install-banner" class="install-banner" style="display:none">
-    <div>
-      <strong data-i18n="install_app">Install</strong>
-      <p data-i18n="install_hint">Add to home screen</p>
-    </div>
-    <button type="button" class="primary-btn" onclick="installPwa()" data-i18n="install_btn">Install</button>
+    <div><strong data-i18n="install_app">Install</strong><p data-i18n="install_hint">Add to home screen</p></div>
+    <button type="button" class="btn-sm primary-btn" onclick="installPwa()" data-i18n="install_btn">Install</button>
     <button type="button" class="icon-btn" onclick="dismissInstall()"><span class="material-icons">close</span></button>
   </div>
 
@@ -34,31 +31,54 @@
           <option value="en">English</option>
           <option value="ky">Кыргызча</option>
         </select>
-        <button type="button" class="theme-toggle" onclick="toggleTheme()" title="Theme">🌓</button>
+        <button type="button" class="icon-btn" onclick="toggleTheme()"><span class="material-icons">brightness_6</span></button>
       </div>
       <div class="input-group">
         <span class="material-icons">person</span>
-        <input id="username-input" type="text" data-i18n-placeholder="username_ph" pattern="[a-zA-Z0-9_]{3,20}" autocomplete="username" />
+        <input id="username-input" type="text" data-i18n-placeholder="username_ph" pattern="[a-zA-Z0-9_]{3,20}" />
       </div>
       <div class="input-group">
         <span class="material-icons">email</span>
-        <input id="email-input" type="email" data-i18n-placeholder="email_ph" autocomplete="email" />
+        <input id="email-input" type="email" data-i18n-placeholder="email_ph" />
       </div>
       <div class="input-group">
         <span class="material-icons">lock</span>
-        <input id="password-input" type="password" data-i18n-placeholder="password_ph" autocomplete="current-password" />
+        <input id="password-input" type="password" data-i18n-placeholder="password_ph" />
       </div>
       <div class="auth-buttons">
-        <button class="primary-btn" type="button" onclick="auth('login')" data-i18n="sign_in">Sign in</button>
-        <button class="secondary-btn" type="button" onclick="auth('register')" data-i18n="register">Register</button>
+        <button class="btn-sm primary-btn" type="button" onclick="auth('login')" data-i18n="sign_in">Sign in</button>
+        <button class="btn-sm secondary-btn" type="button" onclick="auth('register')" data-i18n="register">Register</button>
       </div>
       <p id="login-error"></p>
     </div>
   </div>
 
   <div id="chat-screen" class="screen" style="display:none">
+    <!-- Burger drawer -->
+    <div id="nav-drawer" class="nav-drawer hidden">
+      <div class="nav-drawer-backdrop" onclick="closeNavDrawer()"></div>
+      <aside class="nav-drawer-panel">
+        <div class="drawer-user" onclick="goToProfile()">
+          <div id="drawer-avatar" class="drawer-avatar">?</div>
+          <div>
+            <strong id="drawer-username">—</strong>
+            <span data-i18n="open_profile">Open profile</span>
+          </div>
+        </div>
+        <nav class="drawer-nav">
+          <button type="button" onclick="navGo('chats')"><span class="material-icons">forum</span><span data-i18n="chats">Chats</span></button>
+          <button type="button" onclick="navGo('search')"><span class="material-icons">search</span><span data-i18n="search">Search</span></button>
+          <button type="button" onclick="navGo('profile')"><span class="material-icons">person</span><span data-i18n="profile">Profile</span></button>
+          <button type="button" id="drawer-admin" class="hidden" onclick="navGo('admin')"><span class="material-icons">admin_panel_settings</span><span data-i18n="admin">Admin</span></button>
+        </nav>
+      </aside>
+    </div>
+
     <aside class="sidebar">
-      <div class="sidebar-header"><h3>CONTEXT</h3></div>
+      <div class="sidebar-header">
+        <button type="button" class="icon-btn" onclick="openNavDrawer()" aria-label="Menu"><span class="material-icons">menu</span></button>
+        <h3>CONTEXT</h3>
+      </div>
 
       <div id="panel-chats" class="sidebar-panel active">
         <ul id="chats-list"></ul>
@@ -80,36 +100,48 @@
       </div>
 
       <div id="panel-profile" class="sidebar-panel profile-scroll">
-        <div class="profile-card">
-          <label class="profile-avatar-wrap">
-            <img id="profile-avatar-img" class="profile-avatar-img" alt="" hidden />
+        <div class="profile-hero">
+          <button type="button" class="profile-avatar-btn" onclick="pickAvatar()">
+            <img id="profile-avatar-img" class="profile-avatar-img" alt="" />
             <div class="profile-avatar" id="profile-avatar-letter">?</div>
-            <input id="avatar-input" type="file" accept="image/*" hidden onchange="uploadAvatar()" />
             <span class="avatar-edit"><span class="material-icons">photo_camera</span></span>
-          </label>
+          </button>
+          <input id="avatar-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden onchange="uploadAvatar()" />
           <h4 id="profile-username">—</h4>
           <p id="profile-email" class="profile-email">—</p>
           <p id="profile-status" class="profile-status"></p>
         </div>
-        <label class="field-label" data-i18n="bio_label">About</label>
-        <textarea id="profile-bio" rows="3" data-i18n-placeholder="bio_ph" maxlength="280"></textarea>
-        <button type="button" class="profile-btn primary-btn" onclick="saveProfile()" data-i18n="save_profile">Save</button>
-        <p id="profile-save-status" class="wipe-status"></p>
 
-        <div class="profile-settings">
-          <label data-i18n="language">Language</label>
-          <select id="app-lang" onchange="setLanguage(this.value)">
-            <option value="ru">Русский</option>
-            <option value="en">English</option>
-            <option value="ky">Кыргызча</option>
-          </select>
-          <label data-i18n="theme">Theme</label>
-          <div class="theme-btns">
-            <button type="button" onclick="setTheme('dark')" data-i18n="theme_dark">Dark</button>
-            <button type="button" onclick="setTheme('light')" data-i18n="theme_light">Light</button>
+        <div class="profile-actions-row">
+          <button type="button" class="action-chip" onclick="pickAvatar()"><span class="material-icons">photo_camera</span><span data-i18n="change_avatar">Photo</span></button>
+          <button type="button" class="action-chip primary" onclick="saveProfile()"><span class="material-icons">save</span><span data-i18n="save_profile">Save</span></button>
+        </div>
+        <p id="profile-save-status" class="status-line"></p>
+
+        <div class="profile-block">
+          <label class="field-label" data-i18n="bio_label">About</label>
+          <textarea id="profile-bio" rows="3" data-i18n-placeholder="bio_ph" maxlength="280"></textarea>
+        </div>
+
+        <div class="profile-block settings-rows">
+          <div class="settings-row">
+            <span data-i18n="language">Language</span>
+            <select id="app-lang" onchange="setLanguage(this.value)">
+              <option value="ru">Русский</option>
+              <option value="en">English</option>
+              <option value="ky">Кыргызча</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <span data-i18n="theme">Theme</span>
+            <div class="theme-btns compact">
+              <button type="button" class="btn-xs" onclick="setTheme('dark')" data-i18n="theme_dark">Dark</button>
+              <button type="button" class="btn-xs" onclick="setTheme('light')" data-i18n="theme_light">Light</button>
+            </div>
           </div>
         </div>
-        <button type="button" class="profile-btn" onclick="logout()">
+
+        <button type="button" class="btn-sm profile-btn-outline" onclick="logout()">
           <span class="material-icons">logout</span><span data-i18n="sign_out">Sign out</span>
         </button>
       </div>
@@ -117,55 +149,68 @@
       <div id="panel-admin" class="sidebar-panel profile-scroll">
         <h4 class="admin-title" data-i18n="admin_panel">Admin</h4>
         <p id="admin-stats" class="admin-stats"></p>
-        <p class="profile-admin-title" data-i18n="admin_wipe">Wipe DB</p>
-        <input id="admin-secret-input" type="password" data-i18n-placeholder="admin_secret_ph" />
-        <button type="button" class="danger-btn" onclick="wipeDatabase()" data-i18n="admin_wipe_btn">Delete all</button>
-        <p id="wipe-status" class="wipe-status"></p>
+        <div class="profile-block admin-block">
+          <p class="admin-warn" data-i18n="admin_wipe">Wipe DB</p>
+          <input id="admin-secret-input" type="password" class="input-compact" data-i18n-placeholder="admin_secret_ph" />
+          <button type="button" class="btn-sm danger-btn" onclick="wipeDatabase()" data-i18n="admin_wipe_btn">Delete all</button>
+          <p id="wipe-status" class="status-line"></p>
+        </div>
       </div>
-
-      <nav class="main-tabs">
-        <button type="button" class="active" onclick="switchMainTab('chats', this)">
-          <span class="material-icons">forum</span><span data-i18n="chats">Chats</span>
-        </button>
-        <button type="button" onclick="switchMainTab('search', this)">
-          <span class="material-icons">search</span><span data-i18n="search">Search</span>
-        </button>
-        <button type="button" onclick="switchMainTab('profile', this)">
-          <span class="material-icons">person</span><span data-i18n="profile">Profile</span>
-        </button>
-        <button type="button" id="tab-admin" class="tab-admin hidden" onclick="switchMainTab('admin', this)">
-          <span class="material-icons">admin_panel_settings</span><span data-i18n="admin">Admin</span>
-        </button>
-      </nav>
     </aside>
 
     <main class="chat-area">
       <header class="chat-header">
-        <button type="button" class="back-btn" onclick="closeChatMobile()"><span class="material-icons">arrow_back</span></button>
-        <div class="user-info">
+        <button type="button" class="icon-btn back-btn" onclick="closeChatMobile()"><span class="material-icons">arrow_back</span></button>
+        <button type="button" class="chat-header-tap" onclick="viewPeerProfile()">
           <div class="header-avatar-wrap" id="chat-header-avatar">?</div>
           <div>
             <span id="current-chat-user" data-i18n="select_chat">Chat</span>
             <span id="chat-header-status" class="chat-header-status"></span>
           </div>
-        </div>
-        <button type="button" class="icon-btn chat-delete-btn" id="delete-chat-btn" onclick="deleteCurrentChat()" title="Delete">
-          <span class="material-icons">delete</span>
         </button>
+        <div class="chat-menu-wrap">
+          <button type="button" class="icon-btn" onclick="toggleChatMenu(event)"><span class="material-icons">more_vert</span></button>
+          <div id="chat-menu" class="dropdown-menu hidden">
+            <button type="button" onclick="viewPeerProfile(); closeChatMenu()"><span class="material-icons">person</span><span data-i18n="view_profile">Profile</span></button>
+            <button type="button" class="menu-danger" onclick="deleteCurrentChat(); closeChatMenu()"><span class="material-icons">delete_outline</span><span data-i18n="delete_chat">Delete chat</span></button>
+          </div>
+        </div>
         <p id="typing-indicator" class="typing-indicator"></p>
       </header>
+
       <div id="messages-container" class="messages-empty-hint">
         <p class="empty-chat" data-i18n="select_chat">Select chat</p>
       </div>
+
       <div id="input-area" class="chat-input-area" style="display:none">
-        <label class="attach-btn">
+        <label class="attach-btn icon-btn">
           <span class="material-icons">attach_file</span>
           <input id="file-input" type="file" hidden onchange="uploadFile()" />
         </label>
-        <input id="message-input" type="text" data-i18n-placeholder="message_ph" autocomplete="off" onkeydown="if(event.key==='Enter')sendMessage()" />
-        <button class="send-btn" type="button" onclick="sendMessage()"><span class="material-icons">send</span></button>
+        <input id="message-input" type="text" data-i18n-placeholder="message_ph" onkeydown="if(event.key==='Enter')sendMessage()" />
+        <button type="button" class="send-btn icon-btn" onclick="sendMessage()"><span class="material-icons">send</span></button>
       </div>
     </main>
+  </div>
+
+  <!-- Peer profile (Telegram-style sheet) -->
+  <div id="peer-sheet" class="sheet hidden">
+    <div class="sheet-backdrop" onclick="closePeerSheet()"></div>
+    <div class="sheet-panel">
+      <button type="button" class="icon-btn sheet-close" onclick="closePeerSheet()"><span class="material-icons">close</span></button>
+      <div class="profile-hero compact">
+        <div id="peer-sheet-avatar" class="profile-avatar large">?</div>
+        <h4 id="peer-sheet-name">—</h4>
+        <p id="peer-sheet-status" class="profile-status"></p>
+      </div>
+      <div class="profile-block sheet-bio">
+        <label class="field-label" data-i18n="bio_label">About</label>
+        <p id="peer-sheet-bio" class="bio-text">—</p>
+      </div>
+      <button type="button" class="btn-sm menu-danger full-width" onclick="deleteCurrentChat(); closePeerSheet()">
+        <span class="material-icons">delete_outline</span><span data-i18n="delete_chat">Delete chat</span>
+      </button>
+    </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
