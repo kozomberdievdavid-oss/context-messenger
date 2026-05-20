@@ -1,9 +1,20 @@
 {
   "name": "CONTEXT Messenger",
   "short_name": "CONTEXT",
+  "description": "CONTEXT — messenger with search",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#0b0f19",
   "theme_color": "#6366f1",
-  "description": "Мессенджер с поиском по файлам и вебу"
+  "lang": "ru",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }

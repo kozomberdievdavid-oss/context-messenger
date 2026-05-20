@@ -1,141 +1,175 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>CONTEXT</title>
   <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icons/icon.svg" />
   <meta name="theme-color" content="#0b0f19" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="CONTEXT" />
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
+  <div id="install-banner" class="install-banner" style="display:none">
+    <div>
+      <strong data-i18n="install_app">Install</strong>
+      <p data-i18n="install_hint">Add to home screen</p>
+    </div>
+    <button type="button" class="primary-btn" onclick="installPwa()" data-i18n="install_btn">Install</button>
+    <button type="button" class="icon-btn" onclick="dismissInstall()"><span class="material-icons">close</span></button>
+  </div>
+
   <div id="login-screen" class="screen">
     <div class="login-box">
       <h1 class="logo">CONTEXT</h1>
-      <p class="login-subtitle">Messenger · Latin usernames only</p>
-
+      <p class="login-subtitle" data-i18n="app_subtitle">Messenger</p>
+      <div class="login-settings">
+        <select id="login-lang" onchange="setLanguage(this.value)">
+          <option value="ru">Русский</option>
+          <option value="en">English</option>
+          <option value="ky">Кыргызча</option>
+        </select>
+        <button type="button" class="theme-toggle" onclick="toggleTheme()" title="Theme">🌓</button>
+      </div>
       <div class="input-group">
         <span class="material-icons">person</span>
-        <input id="username-input" type="text" placeholder="Username (a-z, 0-9, _)" pattern="[a-zA-Z0-9_]{3,20}" autocomplete="username" />
+        <input id="username-input" type="text" data-i18n-placeholder="username_ph" pattern="[a-zA-Z0-9_]{3,20}" autocomplete="username" />
       </div>
       <div class="input-group">
         <span class="material-icons">email</span>
-        <input id="email-input" type="email" placeholder="Email" autocomplete="email" />
+        <input id="email-input" type="email" data-i18n-placeholder="email_ph" autocomplete="email" />
       </div>
       <div class="input-group">
         <span class="material-icons">lock</span>
-        <input id="password-input" type="password" placeholder="Password" autocomplete="current-password" />
+        <input id="password-input" type="password" data-i18n-placeholder="password_ph" autocomplete="current-password" />
       </div>
-
       <div class="auth-buttons">
-        <button class="primary-btn" type="button" onclick="auth('login')">Sign in</button>
-        <button class="secondary-btn" type="button" onclick="auth('register')">Register</button>
+        <button class="primary-btn" type="button" onclick="auth('login')" data-i18n="sign_in">Sign in</button>
+        <button class="secondary-btn" type="button" onclick="auth('register')" data-i18n="register">Register</button>
       </div>
       <p id="login-error"></p>
     </div>
   </div>
 
-  <div id="chat-screen" class="screen" style="display: none">
+  <div id="chat-screen" class="screen" style="display:none">
     <aside class="sidebar">
-      <div class="sidebar-header">
-        <h3>CONTEXT</h3>
-      </div>
+      <div class="sidebar-header"><h3>CONTEXT</h3></div>
 
-      <!-- Panel: Chats -->
       <div id="panel-chats" class="sidebar-panel active">
         <ul id="chats-list"></ul>
-        <p class="panel-hint">No public user list. Find people in Search tab.</p>
+        <p class="panel-hint" data-i18n="chats_hint">Only your chats</p>
       </div>
 
-      <!-- Panel: Search -->
       <div id="panel-search" class="sidebar-panel">
         <div class="search-subtabs">
-          <button type="button" class="active" data-mode="users" onclick="setSearchMode('users', this)">Users</button>
-          <button type="button" data-mode="files" onclick="setSearchMode('files', this)">Files</button>
-          <button type="button" data-mode="web" onclick="setSearchMode('web', this)">Web</button>
+          <button type="button" class="active" onclick="setSearchMode('users', this)" data-i18n="users">Users</button>
+          <button type="button" onclick="setSearchMode('files', this)" data-i18n="files">Files</button>
+          <button type="button" onclick="setSearchMode('web', this)" data-i18n="web">Web</button>
         </div>
         <div class="search-box">
           <span class="material-icons search-icon">search</span>
-          <input id="search-input" type="search" placeholder="Find user (Latin)..." oninput="handleSearch()" />
-          <button type="button" id="search-clear" class="search-clear" onclick="clearSearch()" style="display:none">
-            <span class="material-icons">close</span>
-          </button>
+          <input id="search-input" type="search" data-i18n-placeholder="find_user" oninput="handleSearch()" />
+          <button type="button" id="search-clear" class="search-clear" onclick="clearSearch()" style="display:none"><span class="material-icons">close</span></button>
         </div>
         <ul id="search-list"></ul>
       </div>
 
-      <!-- Panel: Profile -->
-      <div id="panel-profile" class="sidebar-panel">
+      <div id="panel-profile" class="sidebar-panel profile-scroll">
         <div class="profile-card">
-          <div class="profile-avatar" id="profile-avatar">?</div>
+          <label class="profile-avatar-wrap">
+            <img id="profile-avatar-img" class="profile-avatar-img" alt="" hidden />
+            <div class="profile-avatar" id="profile-avatar-letter">?</div>
+            <input id="avatar-input" type="file" accept="image/*" hidden onchange="uploadAvatar()" />
+            <span class="avatar-edit"><span class="material-icons">photo_camera</span></span>
+          </label>
           <h4 id="profile-username">—</h4>
           <p id="profile-email" class="profile-email">—</p>
           <p id="profile-status" class="profile-status"></p>
         </div>
-        <button type="button" class="profile-btn" onclick="logout()">
-          <span class="material-icons">logout</span> Sign out
-        </button>
-        <div class="profile-admin">
-          <p class="profile-admin-title">Reset database (admin)</p>
-          <input id="admin-secret-input" type="password" placeholder="ADMIN_SECRET from Render" />
-          <button type="button" class="danger-btn" onclick="wipeDatabase()">Delete all users &amp; messages</button>
-          <p id="wipe-status" class="wipe-status"></p>
+        <label class="field-label" data-i18n="bio_label">About</label>
+        <textarea id="profile-bio" rows="3" data-i18n-placeholder="bio_ph" maxlength="280"></textarea>
+        <button type="button" class="profile-btn primary-btn" onclick="saveProfile()" data-i18n="save_profile">Save</button>
+        <p id="profile-save-status" class="wipe-status"></p>
+
+        <div class="profile-settings">
+          <label data-i18n="language">Language</label>
+          <select id="app-lang" onchange="setLanguage(this.value)">
+            <option value="ru">Русский</option>
+            <option value="en">English</option>
+            <option value="ky">Кыргызча</option>
+          </select>
+          <label data-i18n="theme">Theme</label>
+          <div class="theme-btns">
+            <button type="button" onclick="setTheme('dark')" data-i18n="theme_dark">Dark</button>
+            <button type="button" onclick="setTheme('light')" data-i18n="theme_light">Light</button>
+          </div>
         </div>
+        <button type="button" class="profile-btn" onclick="logout()">
+          <span class="material-icons">logout</span><span data-i18n="sign_out">Sign out</span>
+        </button>
+      </div>
+
+      <div id="panel-admin" class="sidebar-panel profile-scroll">
+        <h4 class="admin-title" data-i18n="admin_panel">Admin</h4>
+        <p id="admin-stats" class="admin-stats"></p>
+        <p class="profile-admin-title" data-i18n="admin_wipe">Wipe DB</p>
+        <input id="admin-secret-input" type="password" data-i18n-placeholder="admin_secret_ph" />
+        <button type="button" class="danger-btn" onclick="wipeDatabase()" data-i18n="admin_wipe_btn">Delete all</button>
+        <p id="wipe-status" class="wipe-status"></p>
       </div>
 
       <nav class="main-tabs">
         <button type="button" class="active" onclick="switchMainTab('chats', this)">
-          <span class="material-icons">forum</span>
-          <span>Chats</span>
+          <span class="material-icons">forum</span><span data-i18n="chats">Chats</span>
         </button>
         <button type="button" onclick="switchMainTab('search', this)">
-          <span class="material-icons">search</span>
-          <span>Search</span>
+          <span class="material-icons">search</span><span data-i18n="search">Search</span>
         </button>
         <button type="button" onclick="switchMainTab('profile', this)">
-          <span class="material-icons">person</span>
-          <span>Profile</span>
+          <span class="material-icons">person</span><span data-i18n="profile">Profile</span>
+        </button>
+        <button type="button" id="tab-admin" class="tab-admin hidden" onclick="switchMainTab('admin', this)">
+          <span class="material-icons">admin_panel_settings</span><span data-i18n="admin">Admin</span>
         </button>
       </nav>
     </aside>
 
     <main class="chat-area">
       <header class="chat-header">
-        <button type="button" class="back-btn" onclick="closeChatMobile()">
-          <span class="material-icons">arrow_back</span>
-        </button>
+        <button type="button" class="back-btn" onclick="closeChatMobile()"><span class="material-icons">arrow_back</span></button>
         <div class="user-info">
-          <div class="header-avatar-wrap">
-            <span class="material-icons">account_circle</span>
-            <span id="chat-header-online" class="online-dot"></span>
-          </div>
+          <div class="header-avatar-wrap" id="chat-header-avatar">?</div>
           <div>
-            <span id="current-chat-user">Select a chat</span>
+            <span id="current-chat-user" data-i18n="select_chat">Chat</span>
             <span id="chat-header-status" class="chat-header-status"></span>
           </div>
         </div>
+        <button type="button" class="icon-btn chat-delete-btn" id="delete-chat-btn" onclick="deleteCurrentChat()" title="Delete">
+          <span class="material-icons">delete</span>
+        </button>
         <p id="typing-indicator" class="typing-indicator"></p>
       </header>
-
       <div id="messages-container" class="messages-empty-hint">
-        <p class="empty-chat">Pick a chat or find a user in Search</p>
+        <p class="empty-chat" data-i18n="select_chat">Select chat</p>
       </div>
-
-      <div id="input-area" class="chat-input-area" style="display: none">
-        <label class="attach-btn" title="Attach file">
+      <div id="input-area" class="chat-input-area" style="display:none">
+        <label class="attach-btn">
           <span class="material-icons">attach_file</span>
           <input id="file-input" type="file" hidden onchange="uploadFile()" />
         </label>
-        <input id="message-input" type="text" placeholder="Message..." autocomplete="off" onkeydown="if (event.key === 'Enter') sendMessage()" />
-        <button class="send-btn" type="button" onclick="sendMessage()">
-          <span class="material-icons">send</span>
-        </button>
+        <input id="message-input" type="text" data-i18n-placeholder="message_ph" autocomplete="off" onkeydown="if(event.key==='Enter')sendMessage()" />
+        <button class="send-btn" type="button" onclick="sendMessage()"><span class="material-icons">send</span></button>
       </div>
     </main>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
+  <script src="/i18n.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

@@ -45,18 +45,25 @@ function isValidUsername(username) {
   return USERNAME_RE.test(String(username || ''));
 }
 
-function sanitizeFilename(name) {
-  const raw = Buffer.from(name || 'file', 'latin1').toString('utf8');
-  const ext = path.extname(raw).replace(/[^a-zA-Z0-9.]/g, '').toLowerCase();
-  let base = path
-    .basename(raw, path.extname(raw))
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-Z0-9_-]/g, '_')
-    .replace(/_+/g, '_')
-    .slice(0, 60);
-  if (!base) base = 'file';
-  return base + ext;
+function decodeFilename(name) {
+  try {
+    return Buffer.from(name || 'file', 'latin1').toString('utf8');
+  } catch {
+    return name || 'file';
+  }
+}
+
+function cloudinarySafeId(name) {
+  const decoded = decodeFilename(name).replace(/\.[^.]+$/, '');
+  return decoded.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_').slice(0, 80) || 'file';
+}
+
+function isAdminEmail(email) {
+  const list = (process.env.ADMIN_EMAIL || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  return list.includes(String(email || '').toLowerCase());
 }
 
 function escapeRegex(str) {
@@ -67,7 +74,7 @@ const storage = new CloudinaryStorage({
   cloudinary,
   params: async (req, file) => {
     const isImage = (file.mimetype || '').startsWith('image/');
-    const safe = sanitizeFilename(file.originalname).replace(/\.[^.]+$/, '');
+    const safe = cloudinarySafeId(file.originalname);
     return {
       folder: 'context_uploads',
       resource_type: isImage ? 'image' : 'raw',
@@ -78,6 +85,19 @@ const storage = new CloudinaryStorage({
 const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 },
+});
+
+const avatarStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'context_avatars',
+    resource_type: 'image',
+    transformation: [{ width: 256, height: 256, crop: 'fill', gravity: 'face' }],
+  },
+});
+const uploadAvatar = multer({
+  storage: avatarStorage,
+  limits: { fileSize: 3 * 1024 * 1024 },
 });
 
 function getOnlineUsernames() {
@@ -92,6 +112,9 @@ const UserSchema = new mongoose.Schema({
   username: { type: String, unique: true },
   email: { type: String, unique: true },
   password: String,
+  role: { type: String, enum: ['user', 'admin'], default: 'user' },
+  bio: { type: String, default: '', maxlength: 280 },
+  avatarUrl: { type: String, default: '' },
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -114,10 +137,17 @@ const userSockets = new Map();
 function createToken(user) {
   const secret = JWT_SECRET || 'dev-only-insecure-secret';
   return jwt.sign(
-    { username: user.username, email: user.email },
+    { username: user.username, email: user.email, role: user.role || 'user' },
     secret,
     { expiresIn: JWT_EXPIRES }
   );
+}
+
+function adminMiddleware(req, res, next) {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ success: false, message: 'Admin only' });
+  }
+  next();
 }
 
 function verifyToken(token) {
@@ -161,11 +191,51 @@ function emitToUser(username, event, data) {
 // ——— REST ———
 
 app.get('/me', authMiddleware, async (req, res) => {
-  const user = await User.findOne({ username: req.user.username }, 'username email').lean();
+  const user = await User.findOne(
+    { username: req.user.username },
+    'username email role bio avatarUrl'
+  ).lean();
   if (!user) return res.status(404).json({ success: false });
   res.json({
     username: user.username,
     email: user.email,
+    role: user.role || 'user',
+    bio: user.bio || '',
+    avatarUrl: user.avatarUrl || '',
+    online: userSockets.has(user.username),
+  });
+});
+
+app.patch('/me/profile', authMiddleware, async (req, res) => {
+  const bio = String(req.body.bio || '').slice(0, 280);
+  await User.updateOne({ username: req.user.username }, { bio });
+  res.json({ success: true, bio });
+});
+
+app.post('/me/avatar', authMiddleware, (req, res) => {
+  uploadAvatar.single('avatar')(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ success: false, message: err.message || 'Upload error' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No image' });
+    }
+    const avatarUrl = req.file.path || req.file.secure_url;
+    await User.updateOne({ username: req.user.username }, { avatarUrl });
+    res.json({ success: true, avatarUrl });
+  });
+});
+
+app.get('/users/:username/public', authMiddleware, async (req, res) => {
+  const user = await User.findOne(
+    { username: req.params.username },
+    'username bio avatarUrl'
+  ).lean();
+  if (!user) return res.status(404).json({ success: false });
+  res.json({
+    username: user.username,
+    bio: user.bio || '',
+    avatarUrl: user.avatarUrl || '',
     online: userSockets.has(user.username),
   });
 });
@@ -184,9 +254,10 @@ app.post('/register', async (req, res) => {
       return res.json({ success: false, message: 'Имя или Email уже заняты' });
     }
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = await User.create({ username, email, password: hashedPassword });
+    const role = isAdminEmail(email) ? 'admin' : 'user';
+    const user = await User.create({ username, email, password: hashedPassword, role });
     const token = createToken(user);
-    res.json({ success: true, username: user.username, token });
+    res.json({ success: true, username: user.username, role: user.role, token });
   } catch {
     res.json({ success: false, message: 'Ошибка сервера' });
   }
@@ -197,8 +268,17 @@ app.post('/login', async (req, res) => {
   try {
     const user = await User.findOne({ email });
     if (user && (await bcrypt.compare(password, user.password))) {
+      if (isAdminEmail(user.email) && user.role !== 'admin') {
+        user.role = 'admin';
+        await user.save();
+      }
       const token = createToken(user);
-      return res.json({ success: true, username: user.username, token });
+      return res.json({
+        success: true,
+        username: user.username,
+        role: user.role || 'user',
+        token,
+      });
     }
     res.json({ success: false, message: 'Неверные данные' });
   } catch {
@@ -208,7 +288,10 @@ app.post('/login', async (req, res) => {
 
 async function buildChatList(me, peerNames) {
   if (!peerNames.length) return [];
-  const users = await User.find({ username: { $in: peerNames } }, 'username').lean();
+  const users = await User.find(
+    { username: { $in: peerNames } },
+    'username avatarUrl bio'
+  ).lean();
   const lastMessages = await Message.aggregate([
     {
       $match: {
@@ -232,6 +315,8 @@ async function buildChatList(me, peerNames) {
   return users
     .map((u) => ({
       username: u.username,
+      avatarUrl: u.avatarUrl || '',
+      bio: u.bio || '',
       online: userSockets.has(u.username),
       lastMessage: lastMap[u.username]?.text?.slice(0, 80) || null,
       lastTime: lastMap[u.username]?.time || null,
@@ -270,7 +355,7 @@ app.get('/users/search', authMiddleware, async (req, res) => {
 
   const users = await User.find(
     { username: { $ne: me, $regex: escapeRegex(q), $options: 'i' } },
-    'username'
+    'username avatarUrl bio'
   )
     .limit(20)
     .lean();
@@ -278,20 +363,45 @@ app.get('/users/search', authMiddleware, async (req, res) => {
   res.json(
     users.map((u) => ({
       username: u.username,
+      avatarUrl: u.avatarUrl || '',
+      bio: u.bio || '',
       online: userSockets.has(u.username),
     }))
   );
 });
 
-app.post('/admin/wipe-database', async (req, res) => {
+app.delete('/chats/:peer', authMiddleware, async (req, res) => {
+  const me = req.user.username;
+  const peer = req.params.peer;
+  if (!isValidUsername(peer)) {
+    return res.status(400).json({ success: false, message: 'Invalid username' });
+  }
+  const result = await Message.deleteMany({
+    $or: [
+      { sender: me, receiver: peer },
+      { sender: peer, receiver: me },
+    ],
+  });
+  res.json({ success: true, deleted: result.deletedCount });
+});
+
+app.get('/admin/stats', authMiddleware, adminMiddleware, async (req, res) => {
+  const [usersCount, messagesCount] = await Promise.all([
+    User.countDocuments(),
+    Message.countDocuments(),
+  ]);
+  res.json({ usersCount, messagesCount });
+});
+
+app.post('/admin/wipe-database', authMiddleware, adminMiddleware, async (req, res) => {
   const secret = req.headers['x-admin-secret'];
-  if (!process.env.ADMIN_SECRET || secret !== process.env.ADMIN_SECRET) {
-    return res.status(403).json({ success: false, message: 'Forbidden' });
+  if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) {
+    return res.status(403).json({ success: false, message: 'Invalid admin secret' });
   }
   await Message.deleteMany({});
   await User.deleteMany({});
   userSockets.clear();
-  res.json({ success: true, message: 'All users and messages deleted' });
+  res.json({ success: true, message: 'Database wiped' });
 });
 
 app.post('/upload', authMiddleware, (req, res) => {
@@ -310,7 +420,7 @@ app.post('/upload', authMiddleware, (req, res) => {
     if (!fileUrl) {
       return res.status(500).json({ success: false, message: 'Cloudinary не вернул ссылку' });
     }
-    const originalName = sanitizeFilename(req.file.originalname);
+    const originalName = decodeFilename(req.file.originalname);
     res.json({ success: true, fileUrl, originalName });
   });
 });
