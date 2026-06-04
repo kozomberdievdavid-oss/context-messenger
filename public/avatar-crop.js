@@ -134,8 +134,13 @@ const AvatarCrop = (() => {
 
   async function confirm() {
     const blob = await exportBlob();
+    if (!blob) {
+      alert('Не удалось обработать изображение. Попробуйте другое фото.');
+      return;
+    }
+    const cb = onConfirmCallback;
     close();
-    if (blob && onConfirmCallback) onConfirmCallback(blob);
+    if (cb) cb(blob);
   }
 
   function bind() {

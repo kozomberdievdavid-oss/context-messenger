@@ -95,28 +95,28 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-const avatarStorage = new CloudinaryStorage({
-  cloudinary,
-  params: async (req, file) => {
-    const safeUser = String(req.user?.username || 'user').replace(/[^a-zA-Z0-9_-]/g, '_');
-    const safeName = cloudinarySafeId(file.originalname || 'avatar');
-    return {
-      folder: 'context_avatars',
-      resource_type: 'image',
-      // Уникальный public_id: иначе все клиенты шлют avatar.jpg и Cloudinary отклоняет повтор
-      public_id: `${safeUser}_${Date.now()}_${safeName}`.slice(0, 120),
-      transformation: [{ width: 256, height: 256, crop: 'fill', gravity: 'auto' }],
-    };
-  },
-});
+/** Аватар: память → Cloudinary напрямую (без transformation при upload — иначе часто 400). */
 const uploadAvatar = multer({
-  storage: avatarStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if ((file.mimetype || '').startsWith('image/')) cb(null, true);
-    else cb(new Error('Допустимы только изображения'));
+    const mt = (file.mimetype || '').toLowerCase();
+    const name = (file.originalname || '').toLowerCase();
+    if (mt.startsWith('image/')) return cb(null, true);
+    if (/\.(jpe?g|png|gif|webp)$/i.test(name)) return cb(null, true);
+    cb(new Error('Допустимы только изображения (JPEG, PNG, WebP)'));
   },
 });
+
+function uploadImageBufferToCloudinary(buffer, options) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(options, (err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
+    stream.end(buffer);
+  });
+}
 
 function getOnlineUsernames() {
   return [...userSockets.keys()];
@@ -250,20 +250,31 @@ app.post('/me/avatar', authMiddleware, (req, res) => {
           : err.message || 'Ошибка загрузки аватара';
       return res.status(400).json({ success: false, message: msg });
     }
-    if (!req.file) {
+    if (!req.file?.buffer?.length) {
       return res.status(400).json({ success: false, message: 'Файл не получен' });
     }
-    const avatarUrl = req.file.secure_url || req.file.path || req.file.url;
-    if (!avatarUrl) {
-      console.error('Avatar upload: no URL in req.file', req.file);
-      return res.status(500).json({ success: false, message: 'Не удалось получить URL из Cloudinary' });
-    }
     try {
+      const safeUser = String(req.user.username || 'user').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const result = await uploadImageBufferToCloudinary(req.file.buffer, {
+        folder: 'context_avatars',
+        resource_type: 'image',
+        public_id: `${safeUser}_${Date.now()}`,
+        format: 'jpg',
+      });
+      const avatarUrl = result?.secure_url;
+      if (!avatarUrl) {
+        console.error('Avatar upload: empty secure_url', result);
+        return res.status(500).json({
+          success: false,
+          message: 'Не удалось получить URL из Cloudinary',
+        });
+      }
       await User.updateOne({ username: req.user.username }, { avatarUrl });
       res.json({ success: true, avatarUrl });
     } catch (e) {
-      console.error('Avatar DB update error:', e);
-      res.status(500).json({ success: false, message: 'Ошибка сохранения в базе' });
+      console.error('Avatar cloudinary upload:', e);
+      const msg = e.message || e.error?.message || 'Ошибка загрузки в Cloudinary';
+      res.status(400).json({ success: false, message: msg });
     }
   });
 });

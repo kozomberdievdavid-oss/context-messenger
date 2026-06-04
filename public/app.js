@@ -407,7 +407,8 @@ async function uploadAvatarBlob(blob) {
   status.textContent = t('loading');
   const fd = new FormData();
   const uname = myUsername || localStorage.getItem('context_user') || 'user';
-  fd.append('avatar', blob, `${uname}_${Date.now()}.jpg`);
+  const file = new File([blob], `${uname}_${Date.now()}.jpg`, { type: 'image/jpeg' });
+  fd.append('avatar', file);
   try {
     const res = await apiFetch('/me/avatar', { method: 'POST', body: fd });
     let data = {};
