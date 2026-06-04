@@ -41,6 +41,14 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+if (
+  !process.env.CLOUDINARY_CLOUD_NAME ||
+  !process.env.CLOUDINARY_API_KEY ||
+  !process.env.CLOUDINARY_API_SECRET
+) {
+  console.warn('⚠️  Cloudinary не настроен (CLOUDINARY_*) — аватары и файлы не загрузятся');
+}
+
 function isValidUsername(username) {
   return USERNAME_RE.test(String(username || ''));
 }
@@ -223,6 +231,16 @@ app.patch('/me/profile', authMiddleware, async (req, res) => {
 });
 
 app.post('/me/avatar', authMiddleware, (req, res) => {
+  if (
+    !process.env.CLOUDINARY_CLOUD_NAME ||
+    !process.env.CLOUDINARY_API_KEY ||
+    !process.env.CLOUDINARY_API_SECRET
+  ) {
+    return res.status(503).json({
+      success: false,
+      message: 'Cloudinary не настроен на сервере (проверьте CLOUDINARY_* в Render)',
+    });
+  }
   uploadAvatar.single('avatar')(req, res, async (err) => {
     if (err) {
       console.error('Avatar upload error:', err.message || err);
@@ -240,8 +258,13 @@ app.post('/me/avatar', authMiddleware, (req, res) => {
       console.error('Avatar upload: no URL in req.file', req.file);
       return res.status(500).json({ success: false, message: 'Не удалось получить URL из Cloudinary' });
     }
-    await User.updateOne({ username: req.user.username }, { avatarUrl });
-    res.json({ success: true, avatarUrl });
+    try {
+      await User.updateOne({ username: req.user.username }, { avatarUrl });
+      res.json({ success: true, avatarUrl });
+    } catch (e) {
+      console.error('Avatar DB update error:', e);
+      res.status(500).json({ success: false, message: 'Ошибка сохранения в базе' });
+    }
   });
 });
 
