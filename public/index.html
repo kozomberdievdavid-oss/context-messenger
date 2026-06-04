@@ -100,30 +100,31 @@
       </div>
 
       <div id="panel-profile" class="sidebar-panel profile-scroll">
-        <div class="profile-hero">
+        <div class="tg-profile-header">
           <button type="button" class="profile-avatar-btn" onclick="pickAvatar()">
             <img id="profile-avatar-img" class="profile-avatar-img" alt="" />
             <div class="profile-avatar" id="profile-avatar-letter">?</div>
             <span class="avatar-edit"><span class="material-icons">photo_camera</span></span>
           </button>
-          <input id="avatar-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden onchange="uploadAvatar()" />
+          <input id="avatar-input" type="file" accept="image/*" hidden onchange="onAvatarFilePicked(this)" />
           <h4 id="profile-username">—</h4>
           <p id="profile-email" class="profile-email">—</p>
           <p id="profile-status" class="profile-status"></p>
         </div>
 
-        <div class="profile-actions-row">
-          <button type="button" class="action-chip" onclick="pickAvatar()"><span class="material-icons">photo_camera</span><span data-i18n="change_avatar">Photo</span></button>
-          <button type="button" class="action-chip primary" onclick="saveProfile()"><span class="material-icons">save</span><span data-i18n="save_profile">Save</span></button>
-        </div>
-        <p id="profile-save-status" class="status-line"></p>
-
-        <div class="profile-block">
-          <label class="field-label" data-i18n="bio_label">About</label>
+        <div class="tg-profile-section">
+          <label class="tg-section-label" data-i18n="bio_label">About</label>
           <textarea id="profile-bio" rows="3" data-i18n-placeholder="bio_ph" maxlength="280"></textarea>
+          <button type="button" class="tg-link-btn" onclick="pickAvatar()">
+            <span class="material-icons">photo_camera</span><span data-i18n="change_avatar">Change photo</span>
+          </button>
+          <button type="button" class="tg-link-btn accent" onclick="saveProfile()">
+            <span class="material-icons">check</span><span data-i18n="save_profile">Save</span>
+          </button>
+          <p id="profile-save-status" class="status-line"></p>
         </div>
 
-        <div class="profile-block settings-rows">
+        <div class="tg-profile-section">
           <div class="settings-row">
             <span data-i18n="language">Language</span>
             <select id="app-lang" onchange="setLanguage(this.value)">
@@ -141,7 +142,7 @@
           </div>
         </div>
 
-        <button type="button" class="btn-sm profile-btn-outline" onclick="logout()">
+        <button type="button" class="tg-link-btn danger-text" onclick="logout()">
           <span class="material-icons">logout</span><span data-i18n="sign_out">Sign out</span>
         </button>
       </div>
@@ -193,21 +194,38 @@
     </main>
   </div>
 
-  <!-- Peer profile (Telegram-style sheet) -->
+  <!-- Avatar crop (Telegram-style) -->
+  <div id="avatar-crop-modal" class="avatar-crop-modal hidden">
+    <div class="avatar-crop-stage">
+      <canvas id="avatar-crop-canvas"></canvas>
+      <div class="avatar-crop-ring" aria-hidden="true"></div>
+    </div>
+    <p class="avatar-crop-hint" data-i18n="crop_hint">Drag to move · Pinch/wheel to zoom</p>
+    <div class="avatar-crop-toolbar">
+      <button type="button" class="crop-tool" onclick="avatarCropCancel()"><span class="material-icons">close</span></button>
+      <button type="button" class="crop-tool" onclick="avatarCropRotate()"><span class="material-icons">rotate_right</span></button>
+      <button type="button" class="crop-tool" onclick="avatarCropFlip()"><span class="material-icons">flip</span></button>
+      <button type="button" class="crop-tool confirm" onclick="avatarCropConfirm()"><span class="material-icons">check</span></button>
+    </div>
+  </div>
+
+  <!-- Peer profile -->
   <div id="peer-sheet" class="sheet hidden">
     <div class="sheet-backdrop" onclick="closePeerSheet()"></div>
-    <div class="sheet-panel">
-      <button type="button" class="icon-btn sheet-close" onclick="closePeerSheet()"><span class="material-icons">close</span></button>
-      <div class="profile-hero compact">
-        <div id="peer-sheet-avatar" class="profile-avatar large">?</div>
+    <div class="sheet-panel tg-peer-sheet">
+      <div class="tg-peer-header">
+        <button type="button" class="icon-btn sheet-close light" onclick="closePeerSheet()"><span class="material-icons">close</span></button>
+        <div id="peer-sheet-avatar" class="peer-avatar-large">?</div>
         <h4 id="peer-sheet-name">—</h4>
-        <p id="peer-sheet-status" class="profile-status"></p>
+        <p id="peer-sheet-status" class="peer-status"></p>
       </div>
-      <div class="profile-block sheet-bio">
-        <label class="field-label" data-i18n="bio_label">About</label>
-        <p id="peer-sheet-bio" class="bio-text">—</p>
+      <div class="tg-profile-section flat">
+        <div class="tg-info-row">
+          <span class="tg-info-label" data-i18n="bio_label">About</span>
+          <p id="peer-sheet-bio" class="tg-info-value">—</p>
+        </div>
       </div>
-      <button type="button" class="btn-sm menu-danger full-width" onclick="deleteCurrentChat(); closePeerSheet()">
+      <button type="button" class="tg-link-btn danger-text center" onclick="deleteCurrentChat(); closePeerSheet()">
         <span class="material-icons">delete_outline</span><span data-i18n="delete_chat">Delete chat</span>
       </button>
     </div>
@@ -215,6 +233,7 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/i18n.js"></script>
+  <script src="/avatar-crop.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

@@ -89,15 +89,25 @@ const upload = multer({
 
 const avatarStorage = new CloudinaryStorage({
   cloudinary,
-  params: {
-    folder: 'context_avatars',
-    resource_type: 'image',
-    transformation: [{ width: 256, height: 256, crop: 'fill' }],
+  params: async (req, file) => {
+    const safeUser = String(req.user?.username || 'user').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const safeName = cloudinarySafeId(file.originalname || 'avatar');
+    return {
+      folder: 'context_avatars',
+      resource_type: 'image',
+      // Уникальный public_id: иначе все клиенты шлют avatar.jpg и Cloudinary отклоняет повтор
+      public_id: `${safeUser}_${Date.now()}_${safeName}`.slice(0, 120),
+      transformation: [{ width: 256, height: 256, crop: 'fill', gravity: 'auto' }],
+    };
   },
 });
 const uploadAvatar = multer({
   storage: avatarStorage,
-  limits: { fileSize: 3 * 1024 * 1024 },
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if ((file.mimetype || '').startsWith('image/')) cb(null, true);
+    else cb(new Error('Допустимы только изображения'));
+  },
 });
 
 function getOnlineUsernames() {
@@ -215,14 +225,20 @@ app.patch('/me/profile', authMiddleware, async (req, res) => {
 app.post('/me/avatar', authMiddleware, (req, res) => {
   uploadAvatar.single('avatar')(req, res, async (err) => {
     if (err) {
-      return res.status(400).json({ success: false, message: err.message || 'Upload error' });
+      console.error('Avatar upload error:', err.message || err);
+      const msg =
+        err.code === 'LIMIT_FILE_SIZE'
+          ? 'Файл слишком большой (макс. 5 МБ)'
+          : err.message || 'Ошибка загрузки аватара';
+      return res.status(400).json({ success: false, message: msg });
     }
     if (!req.file) {
-      return res.status(400).json({ success: false, message: 'No image' });
+      return res.status(400).json({ success: false, message: 'Файл не получен' });
     }
     const avatarUrl = req.file.secure_url || req.file.path || req.file.url;
     if (!avatarUrl) {
-      return res.status(500).json({ success: false, message: 'Cloudinary URL missing' });
+      console.error('Avatar upload: no URL in req.file', req.file);
+      return res.status(500).json({ success: false, message: 'Не удалось получить URL из Cloudinary' });
     }
     await User.updateOne({ username: req.user.username }, { avatarUrl });
     res.json({ success: true, avatarUrl });

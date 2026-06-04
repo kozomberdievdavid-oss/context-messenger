@@ -246,10 +246,6 @@ function goToProfile() {
   navGo('profile');
 }
 
-function pickAvatar() {
-  document.getElementById('avatar-input')?.click();
-}
-
 function toggleChatMenu(e) {
   e?.stopPropagation();
   document.getElementById('chat-menu')?.classList.toggle('hidden');
@@ -403,24 +399,37 @@ function onAvatarFilePicked(input) {
 
 async function uploadAvatarBlob(blob) {
   if (!blob) return;
+  if (!getToken()) {
+    alert(t('auth_error'));
+    return;
+  }
   const status = document.getElementById('profile-save-status');
   status.textContent = t('loading');
   const fd = new FormData();
-  fd.append('avatar', blob, 'avatar.jpg');
+  const uname = myUsername || localStorage.getItem('context_user') || 'user';
+  fd.append('avatar', blob, `${uname}_${Date.now()}.jpg`);
   try {
     const res = await apiFetch('/me/avatar', { method: 'POST', body: fd });
-    const data = await res.json();
+    let data = {};
+    try {
+      data = await res.json();
+    } catch {
+      /* empty */
+    }
     if (!res.ok || !data.avatarUrl) {
-      status.textContent = data.message || t('upload_fail');
-      alert(data.message || t('upload_fail'));
+      const msg = data.message || t('upload_fail');
+      status.textContent = msg;
+      alert(msg);
       return;
     }
     myAvatarUrl = data.avatarUrl;
-    setProfileAvatar(data.avatarUrl, myUsername);
+    setProfileAvatar(data.avatarUrl, uname);
+    updateDrawerAvatar(data.avatarUrl, uname);
     status.textContent = t('saved');
     loadChats();
   } catch (e) {
-    console.error(e);
+    if (e.message === 'Unauthorized') return;
+    console.error('uploadAvatarBlob', e);
     status.textContent = t('upload_fail');
     alert(t('upload_fail'));
   }
